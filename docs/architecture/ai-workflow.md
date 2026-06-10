@@ -1,4 +1,4 @@
-# AutoCV AI Workflow Notes
+# AutoCV AI 工作流职责
 
 This document records the current responsibility model for AutoCV's AI-assisted workflow. It is not a final agent architecture, database design, or implementation specification.
 
@@ -20,7 +20,7 @@ Profile Intake
 
 Automatic job discovery is a second-phase workflow. Application packaging, cover letters, email drafts, and interview preparation are outside the MVP.
 
-The current product rules are defined in the [MVP product specification](./docs/product/autocv-mvp-product-spec.md). The broader [product definition plan](./docs/plans/autocv-product-definition-plan.md) remains the validation backlog.
+The current product rules are defined in the [MVP product specification](../product/autocv-mvp-product-spec.md). The broader [product definition plan](../plans/autocv-product-definition-plan.md) remains the validation backlog.
 
 ## Workflow Principles
 
@@ -283,7 +283,7 @@ Crawler tools, supported sources, scheduling, and storage are not settled. Any i
 
 ## Current Technical Direction
 
-The MVP implementation baseline is defined in the [MVP architecture](./docs/architecture/mvp-architecture.md):
+The MVP implementation baseline is defined in the [MVP architecture](./mvp-architecture.md):
 
 - Wails 3 desktop application
 - Go-owned explicit workflow
@@ -293,6 +293,6 @@ The MVP implementation baseline is defined in the [MVP architecture](./docs/arch
 - Typst-based local PDF rendering
 - No Agent framework, vector database, cloud account, or microservice split in the MVP
 
-The delivery order and acceptance gates are defined in the [MVP implementation plan](./docs/plans/mvp-implementation-plan.md).
+The delivery order and acceptance gates are defined in the [MVP implementation plan](../plans/mvp-implementation-plan.md).
 
 Document parser libraries, the concrete OpenAI model, the SQLite driver, the Keychain wrapper, and the final font set remain implementation Spikes. They must not change the product contract or module boundaries without an architecture decision update.

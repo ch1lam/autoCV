@@ -6,6 +6,8 @@
 >
 > 对应产品规格：[`docs/product/autocv-mvp-product-spec.md`](../product/autocv-mvp-product-spec.md)
 
+AI 阶段的详细职责见 [`docs/architecture/ai-workflow.md`](./ai-workflow.md)。
+
 ## 1. 架构目标
 
 本架构服务于第一阶段简历定制闭环：

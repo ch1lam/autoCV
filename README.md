@@ -151,7 +151,7 @@ Profile Intake
   -> PDF Rendering
 ```
 
-These names describe responsibilities, not a final commitment to seven independent agents or services. See [Agent.md](./Agent.md) for the current workflow notes.
+These names describe responsibilities, not a final commitment to seven independent agents or services. See the [AI workflow responsibilities](./docs/architecture/ai-workflow.md) for the current workflow notes.
 
 ## Technical Direction
 
