@@ -5,6 +5,7 @@ import (
 	"embed"
 	"log"
 
+	"github.com/ch1lam/autocv/internal/adapters/configfile"
 	"github.com/ch1lam/autocv/internal/adapters/filesystem"
 	"github.com/ch1lam/autocv/internal/adapters/sqlite"
 	appservice "github.com/ch1lam/autocv/internal/app"
@@ -20,6 +21,9 @@ func main() {
 		log.Fatal(err)
 	}
 	if err := paths.Ensure(); err != nil {
+		log.Fatal(err)
+	}
+	if _, err := configfile.New(paths.Config).LoadOrCreate(); err != nil {
 		log.Fatal(err)
 	}
 
