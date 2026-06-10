@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"log"
 
+	"github.com/ch1lam/autocv/internal/adapters/filesystem"
+	"github.com/ch1lam/autocv/internal/adapters/sqlite"
 	appservice "github.com/ch1lam/autocv/internal/app"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -12,6 +15,20 @@ import (
 var assets embed.FS
 
 func main() {
+	paths, err := filesystem.DefaultPaths()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := paths.Ensure(); err != nil {
+		log.Fatal(err)
+	}
+
+	db, err := sqlite.Open(context.Background(), paths.Database)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
 	app := application.New(application.Options{
 		Name:        "AutoCV",
 		Description: "Local-first AI resume workbench",
