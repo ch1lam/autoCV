@@ -28,8 +28,8 @@ func main() {
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:     "AutoCV",
-		Width:     1440,
-		Height:    960,
+		Width:     1487,
+		Height:    1058,
 		MinWidth:  1100,
 		MinHeight: 720,
 		Mac: application.MacWindow{

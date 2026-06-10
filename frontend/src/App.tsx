@@ -1,30 +1,697 @@
-import { useEffect, useState } from "react";
+import {
+  IconArchive,
+  IconCheck,
+  IconChevronDown,
+  IconChevronRight,
+  IconChevronUp,
+  IconCopy,
+  IconDatabase,
+  IconEdit,
+  IconFileDescription,
+  IconFileText,
+  IconFileTypePdf,
+  IconInfoCircle,
+  IconPointFilled,
+  IconRefresh,
+  IconSettings,
+  IconTargetArrow,
+  IconX,
+} from "@tabler/icons-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { HealthService } from "../bindings/github.com/ch1lam/autocv/internal/app";
+import {
+  allRequirements,
+  type MatchStatus,
+  requirementGroups,
+  type Requirement,
+} from "./mockData";
 
-type HealthState = "checking" | "ready" | "error";
+type HealthState = "checking" | "ready" | "preview";
+type Filter = "all" | MatchStatus;
+type SortMode = "importance" | "status" | "evidence";
+
+const navItems = [
+  { label: "资料库", icon: IconArchive },
+  { label: "JD 工作区", icon: IconFileText },
+  { label: "匹配审阅", icon: IconTargetArrow },
+  { label: "简历工作室", icon: IconEdit },
+  { label: "PDF 预览", icon: IconFileTypePdf },
+];
+
+const statusMeta: Record<
+  MatchStatus,
+  { label: string; className: string; rank: number }
+> = {
+  strong: { label: "强匹配", className: "strong", rank: 0 },
+  partial: { label: "部分匹配", className: "partial", rank: 1 },
+  missing: { label: "缺失", className: "missing", rank: 2 },
+};
+
+const statusCounts = allRequirements.reduce(
+  (counts, requirement) => {
+    counts[requirement.status] += 1;
+    return counts;
+  },
+  { strong: 0, partial: 0, missing: 0 },
+);
 
 function App() {
   const [health, setHealth] = useState<HealthState>("checking");
+  const [activeNav, setActiveNav] = useState("匹配审阅");
+  const [selectedId, setSelectedId] = useState("go-concurrency");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [sortMode, setSortMode] = useState<SortMode>("importance");
+  const [sortOpen, setSortOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
+    new Set(["technical"]),
+  );
+  const [expandedSources, setExpandedSources] = useState<Set<string>>(
+    new Set(["source-backend"]),
+  );
+  const [isAnalysing, setIsAnalysing] = useState(false);
+  const [generateOpen, setGenerateOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [notice, setNotice] = useState("");
+  const analyseTimer = useRef<number>();
+  const noticeTimer = useRef<number>();
 
   useEffect(() => {
     HealthService.Check()
-      .then((status) => setHealth(status.status === "ready" ? "ready" : "error"))
-      .catch(() => setHealth("error"));
+      .then((status) => setHealth(status.status === "ready" ? "ready" : "preview"))
+      .catch(() => setHealth("preview"));
+
+    return () => {
+      window.clearTimeout(analyseTimer.current);
+      window.clearTimeout(noticeTimer.current);
+    };
   }, []);
 
+  const selectedRequirement =
+    allRequirements.find((requirement) => requirement.id === selectedId) ??
+    allRequirements[0];
+
+  const visibleGroups = useMemo(() => {
+    return requirementGroups
+      .map((group) => {
+        const requirements = group.requirements
+          .filter(
+            (requirement) =>
+              filter === "all" || requirement.status === filter,
+          )
+          .slice()
+          .sort((left, right) => {
+            if (sortMode === "status") {
+              return (
+                statusMeta[left.status].rank - statusMeta[right.status].rank
+              );
+            }
+            if (sortMode === "evidence") {
+              return right.evidenceCount - left.evidenceCount;
+            }
+            return (
+              allRequirements.indexOf(left) - allRequirements.indexOf(right)
+            );
+          });
+
+        return { ...group, requirements };
+      })
+      .filter((group) => group.requirements.length > 0);
+  }, [filter, sortMode]);
+
+  const showNotice = (message: string) => {
+    setNotice(message);
+    window.clearTimeout(noticeTimer.current);
+    noticeTimer.current = window.setTimeout(() => setNotice(""), 2400);
+  };
+
+  const handleNav = (label: string) => {
+    if (label === "匹配审阅") {
+      setActiveNav(label);
+      return;
+    }
+    showNotice(`${label}将在后续垂直切片中接入本地业务数据`);
+  };
+
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  };
+
+  const selectRequirement = (requirement: Requirement) => {
+    setSelectedId(requirement.id);
+    setInspectorOpen(true);
+    setExpandedSources(
+      new Set(requirement.sources[0] ? [requirement.sources[0].id] : []),
+    );
+    setCopied(false);
+  };
+
+  const toggleSource = (sourceId: string) => {
+    setExpandedSources((current) => {
+      const next = new Set(current);
+      if (next.has(sourceId)) {
+        next.delete(sourceId);
+      } else {
+        next.add(sourceId);
+      }
+      return next;
+    });
+  };
+
+  const handleAnalyse = () => {
+    setIsAnalysing(true);
+    window.clearTimeout(analyseTimer.current);
+    analyseTimer.current = window.setTimeout(() => {
+      setIsAnalysing(false);
+      showNotice("分析已更新，19 项要求的证据关联保持有效");
+    }, 1100);
+  };
+
+  const handleCopy = async () => {
+    const source = selectedRequirement.sources[0];
+    if (!source) {
+      return;
+    }
+    await navigator.clipboard.writeText(source.excerpt.join("\n"));
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
+  };
+
+  const sortLabel = {
+    importance: "按重要性",
+    status: "按匹配状态",
+    evidence: "按证据数量",
+  }[sortMode];
+
   return (
-    <main className="bootstrap-shell">
-      <p className="eyebrow">LOCAL-FIRST RESUME WORKBENCH</p>
-      <h1>AutoCV</h1>
-      <p className="summary">Preparing the local workspace.</p>
-      <div className={`health health--${health}`} role="status">
-        <span className="health__dot" />
-        {health === "checking" && "Checking desktop service"}
-        {health === "ready" && "Desktop service ready"}
-        {health === "error" && "Desktop service unavailable"}
-      </div>
-    </main>
+    <div className="app-shell" data-health={health}>
+      <aside className="sidebar">
+        <div className="brand">AutoCV</div>
+        <nav className="primary-nav" aria-label="主要导航">
+          {navItems.map(({ label, icon: Icon }) => (
+            <button
+              className={`nav-item ${activeNav === label ? "is-active" : ""}`}
+              key={label}
+              onClick={() => handleNav(label)}
+              type="button"
+            >
+              <Icon aria-hidden="true" size={21} stroke={1.65} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
+        <button
+          className="nav-item nav-item--settings"
+          onClick={() => handleNav("设置")}
+          type="button"
+        >
+          <IconSettings aria-hidden="true" size={21} stroke={1.65} />
+          <span>设置</span>
+        </button>
+      </aside>
+
+      <section className="workspace">
+        <header className="topbar">
+          <div className="profile-picker">
+            <button
+              aria-expanded={profileOpen}
+              className="profile-trigger"
+              onClick={() => setProfileOpen((current) => !current)}
+              type="button"
+            >
+              <span className="avatar" aria-hidden="true">
+                LZ
+              </span>
+              <span>
+                <strong>黎智林</strong>
+                <small>/ 主资料库</small>
+              </span>
+              <IconChevronDown aria-hidden="true" size={17} stroke={1.6} />
+            </button>
+            {profileOpen && (
+              <div className="profile-menu">
+                <button
+                  onClick={() => {
+                    setProfileOpen(false);
+                    showNotice("已选择主资料库");
+                  }}
+                  type="button"
+                >
+                  <IconCheck aria-hidden="true" size={16} stroke={1.7} />
+                  主资料库
+                </button>
+                <button
+                  onClick={() => {
+                    setProfileOpen(false);
+                    showNotice("英文资料库将在 M2 支持");
+                  }}
+                  type="button"
+                >
+                  <span className="menu-spacer" />
+                  英文资料库
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="analysis-state" aria-live="polite">
+            <span className="analysis-icon">
+              {isAnalysing ? (
+                <IconRefresh
+                  aria-hidden="true"
+                  className="is-spinning"
+                  size={21}
+                  stroke={1.7}
+                />
+              ) : (
+                <IconCheck aria-hidden="true" size={19} stroke={1.8} />
+              )}
+            </span>
+            <span>
+              <strong>{isAnalysing ? "分析中" : "分析完成"}</strong>
+              <small>{isAnalysing ? "正在重建证据关联" : "19 个要求已分析"}</small>
+            </span>
+          </div>
+
+          <div className="topbar-actions">
+            <button
+              className="button button--secondary"
+              disabled={isAnalysing}
+              onClick={handleAnalyse}
+              type="button"
+            >
+              <IconRefresh aria-hidden="true" size={18} stroke={1.65} />
+              重新分析
+            </button>
+            <button
+              className="button button--primary"
+              onClick={() => setGenerateOpen(true)}
+              type="button"
+            >
+              <IconFileDescription
+                aria-hidden="true"
+                size={19}
+                stroke={1.65}
+              />
+              生成简历
+            </button>
+          </div>
+        </header>
+
+        <div className="review-layout">
+          <main className="match-review">
+            <section className="review-heading">
+              <div>
+                <h1>Senior Backend Engineer</h1>
+                <p>匹配审阅 · 审查岗位要求与个人证据的匹配情况</p>
+              </div>
+              <div className="score">
+                <span>综合匹配</span>
+                <strong>82</strong>
+                <small>/ 100</small>
+              </div>
+            </section>
+
+            <section className="review-controls">
+              <div className="filter-tabs" role="tablist" aria-label="匹配筛选">
+                {[
+                  { id: "all" as const, label: "全部", count: allRequirements.length },
+                  { id: "strong" as const, label: "强匹配", count: statusCounts.strong },
+                  { id: "partial" as const, label: "部分匹配", count: statusCounts.partial },
+                  { id: "missing" as const, label: "缺失", count: statusCounts.missing },
+                ].map((tab) => (
+                  <button
+                    aria-selected={filter === tab.id}
+                    className={filter === tab.id ? "is-active" : ""}
+                    key={tab.id}
+                    onClick={() => setFilter(tab.id)}
+                    role="tab"
+                    type="button"
+                  >
+                    {tab.label}
+                    <span>{tab.count}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="sort-picker">
+                <button
+                  aria-expanded={sortOpen}
+                  className="sort-trigger"
+                  onClick={() => setSortOpen((current) => !current)}
+                  type="button"
+                >
+                  {sortLabel}
+                  <IconChevronDown aria-hidden="true" size={16} stroke={1.5} />
+                </button>
+                {sortOpen && (
+                  <div className="sort-menu">
+                    {[
+                      ["importance", "按重要性"],
+                      ["status", "按匹配状态"],
+                      ["evidence", "按证据数量"],
+                    ].map(([value, label]) => (
+                      <button
+                        className={sortMode === value ? "is-selected" : ""}
+                        key={value}
+                        onClick={() => {
+                          setSortMode(value as SortMode);
+                          setSortOpen(false);
+                        }}
+                        type="button"
+                      >
+                        {sortMode === value && (
+                          <IconCheck aria-hidden="true" size={15} stroke={1.8} />
+                        )}
+                        <span>{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <div className="requirement-table">
+              <div className="table-head" aria-hidden="true">
+                <span>要求</span>
+                <span>匹配状态</span>
+                <span>证据数量</span>
+                <span />
+              </div>
+              <div className="table-body">
+                {visibleGroups.map((group) => {
+                  const expanded = expandedGroups.has(group.id);
+
+                  return (
+                    <section className="requirement-group" key={group.id}>
+                      <button
+                        aria-expanded={expanded}
+                        className="group-row"
+                        onClick={() => toggleGroup(group.id)}
+                        type="button"
+                      >
+                        <span className="group-label">
+                          {expanded ? (
+                            <IconChevronDown
+                              aria-hidden="true"
+                              size={18}
+                              stroke={1.65}
+                            />
+                          ) : (
+                            <IconChevronRight
+                              aria-hidden="true"
+                              size={18}
+                              stroke={1.65}
+                            />
+                          )}
+                          <strong>{group.label}</strong>
+                          <small>({group.requirements.length})</small>
+                        </span>
+                        {!expanded && (
+                          <>
+                            <span
+                              className={`status-badge status-badge--${group.summaryStatus}`}
+                            >
+                              <IconPointFilled aria-hidden="true" size={15} />
+                              {statusMeta[group.summaryStatus].label}
+                            </span>
+                            <span className="group-evidence">
+                              {group.summaryEvidenceCount}
+                            </span>
+                          </>
+                        )}
+                      </button>
+                      {expanded &&
+                        group.requirements.map((requirement) => {
+                          const selected = requirement.id === selectedRequirement.id;
+                          return (
+                            <button
+                              className={`requirement-row ${selected ? "is-selected" : ""}`}
+                              key={requirement.id}
+                              onClick={() => selectRequirement(requirement)}
+                              type="button"
+                            >
+                              <span className="requirement-text">
+                                <small>
+                                  {allRequirements.indexOf(requirement) + 1}
+                                </small>
+                                <span>{requirement.text}</span>
+                              </span>
+                              <span
+                                className={`status-badge status-badge--${requirement.status}`}
+                              >
+                                <IconPointFilled aria-hidden="true" size={15} />
+                                {statusMeta[requirement.status].label}
+                              </span>
+                              <span className="evidence-count">
+                                {requirement.evidenceCount}
+                              </span>
+                              <IconChevronRight
+                                aria-hidden="true"
+                                className="row-chevron"
+                                size={18}
+                                stroke={1.55}
+                              />
+                            </button>
+                          );
+                        })}
+                    </section>
+                  );
+                })}
+                {visibleGroups.length === 0 && (
+                  <div className="empty-filter">
+                    当前筛选没有匹配要求。
+                    <button onClick={() => setFilter("all")} type="button">
+                      查看全部
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+            <p className="review-hint">
+              <IconInfoCircle aria-hidden="true" size={17} stroke={1.6} />
+              点击要求行查看右侧的来源证据与匹配说明
+            </p>
+          </main>
+
+          <aside
+            className={`evidence-panel ${inspectorOpen ? "" : "is-closed"}`}
+            key={selectedRequirement.id}
+          >
+            <header className="evidence-header">
+              <h2>来源证据</h2>
+              <button
+                aria-label="关闭来源证据"
+                className="icon-button evidence-close"
+                onClick={() => setInspectorOpen(false)}
+                type="button"
+              >
+                <IconX aria-hidden="true" size={19} stroke={1.6} />
+              </button>
+            </header>
+
+            <section className="evidence-summary">
+              <span>对应要求</span>
+              <h3>{selectedRequirement.text}</h3>
+              <dl>
+                <div>
+                  <dt>匹配状态</dt>
+                  <dd
+                    className={`status-badge status-badge--${selectedRequirement.status}`}
+                  >
+                    <IconPointFilled aria-hidden="true" size={15} />
+                    {statusMeta[selectedRequirement.status].label}
+                  </dd>
+                </div>
+                <div>
+                  <dt>证据数量</dt>
+                  <dd>{selectedRequirement.evidenceCount}</dd>
+                </div>
+              </dl>
+            </section>
+
+            <section className="sources">
+              <h3>证据来源（{selectedRequirement.sources.length}）</h3>
+              {selectedRequirement.sources.length === 0 ? (
+                <div className="empty-source">
+                  <IconDatabase aria-hidden="true" size={24} stroke={1.5} />
+                  <strong>当前资料中没有直接证据</strong>
+                  <p>后续追问阶段会确认用户是否具备该项能力。</p>
+                </div>
+              ) : (
+                selectedRequirement.sources.map((source) => {
+                  const expanded = expandedSources.has(source.id);
+                  return (
+                    <article className="source-item" key={source.id}>
+                      <button
+                        aria-expanded={expanded}
+                        className="source-trigger"
+                        onClick={() => toggleSource(source.id)}
+                        type="button"
+                      >
+                        {expanded ? (
+                          <IconChevronUp
+                            aria-hidden="true"
+                            size={17}
+                            stroke={1.5}
+                          />
+                        ) : (
+                          <IconChevronRight
+                            aria-hidden="true"
+                            size={17}
+                            stroke={1.5}
+                          />
+                        )}
+                        <span>{source.document}</span>
+                      </button>
+                      {expanded && (
+                        <div className="source-snippets">
+                          {source.snippets.map((snippet, index) => (
+                            <button
+                              className={index === 0 ? "is-current" : ""}
+                              key={`${source.id}-${snippet.location}`}
+                              onClick={() =>
+                                showNotice(
+                                  `已定位到 ${source.document} ${snippet.location}`,
+                                )
+                              }
+                              type="button"
+                            >
+                              <IconPointFilled
+                                aria-hidden="true"
+                                size={12}
+                              />
+                              <span>{snippet.location}</span>
+                              <strong>{snippet.label}</strong>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })
+              )}
+            </section>
+
+            {selectedRequirement.sources[0] && (
+              <>
+                <section className="source-content">
+                  <header>
+                    <h3>来源内容</h3>
+                    <span>
+                      来自 {selectedRequirement.sources[0].document}
+                    </span>
+                  </header>
+                  <div className="source-code">
+                    {selectedRequirement.sources[0].excerpt.map((line, index) => (
+                      <div className="source-line" key={`${line}-${index}`}>
+                        <span>{42 + index}</span>
+                        <code>{line || " "}</code>
+                      </div>
+                    ))}
+                    <button
+                      className="copy-button"
+                      onClick={handleCopy}
+                      type="button"
+                    >
+                      {copied ? (
+                        <IconCheck aria-hidden="true" size={15} stroke={1.7} />
+                      ) : (
+                        <IconCopy aria-hidden="true" size={15} stroke={1.7} />
+                      )}
+                      {copied ? "已复制" : "复制"}
+                    </button>
+                  </div>
+                </section>
+                <section className="match-explanation">
+                  <h3>匹配说明</h3>
+                  <p>{selectedRequirement.sources[0].explanation}</p>
+                </section>
+              </>
+            )}
+          </aside>
+        </div>
+      </section>
+
+      {notice && (
+        <div className="toast" role="status">
+          <IconCheck aria-hidden="true" size={17} stroke={1.8} />
+          {notice}
+        </div>
+      )}
+
+      {generateOpen && (
+        <div
+          aria-labelledby="generate-title"
+          aria-modal="true"
+          className="modal-backdrop"
+          role="dialog"
+        >
+          <section className="generate-dialog">
+            <button
+              aria-label="关闭"
+              className="icon-button modal-close"
+              onClick={() => setGenerateOpen(false)}
+              type="button"
+            >
+              <IconX aria-hidden="true" size={20} stroke={1.6} />
+            </button>
+            <span className="dialog-kicker">下一阶段</span>
+            <h2 id="generate-title">基于当前匹配结果生成简历</h2>
+            <p>
+              将使用平衡包装档，并保留所有来源引用。缺失要求不会被补写成事实。
+            </p>
+            <dl className="dialog-summary">
+              <div>
+                <dt>目标岗位</dt>
+                <dd>Senior Backend Engineer</dd>
+              </div>
+              <div>
+                <dt>综合匹配</dt>
+                <dd>82 / 100</dd>
+              </div>
+              <div>
+                <dt>包装档位</dt>
+                <dd>平衡</dd>
+              </div>
+            </dl>
+            <div className="dialog-actions">
+              <button
+                className="button button--secondary"
+                onClick={() => setGenerateOpen(false)}
+                type="button"
+              >
+                继续审阅
+              </button>
+              <button
+                className="button button--primary"
+                onClick={() => {
+                  setGenerateOpen(false);
+                  showNotice("生成请求已进入 Resume Studio");
+                }}
+                type="button"
+              >
+                <IconFileDescription
+                  aria-hidden="true"
+                  size={18}
+                  stroke={1.65}
+                />
+                确认生成
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+    </div>
   );
 }
 

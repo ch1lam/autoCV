@@ -15,3 +15,4 @@ private-samples/
 runs/
 exports/
 backups/
+.artifacts/
