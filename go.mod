@@ -6,6 +6,7 @@ toolchain go1.26.4
 
 require (
 	github.com/wailsapp/wails/v3 v3.0.0-alpha.98
+	github.com/yuin/goldmark v1.8.2
 	modernc.org/sqlite v1.52.0
 )
 
