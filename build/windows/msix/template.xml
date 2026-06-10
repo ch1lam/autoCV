@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<MsixPackagingToolTemplate
+    xmlns="http://schemas.microsoft.com/msix/packaging/msixpackagingtool/template/2022">
+    <Settings
+        AllowTelemetry="false"
+        ApplyACLsToPackageFiles="true"
+        GenerateCommandLineFile="true"
+        AllowPromptForPassword="false">
+    </Settings>
+    <Installer
+        Path="autocv"
+        Arguments=""
+        InstallLocation="C:\Program Files\ch1lam\AutoCV">
+    </Installer>
+    <PackageInformation
+        PackageName="AutoCV"
+        PackageDisplayName="AutoCV"
+        PublisherName="CN=ch1lam"
+        PublisherDisplayName="ch1lam"
+        Version="0.1.0.0"
+        PackageDescription="Local-first AI resume workbench">
+        <Capabilities>
+            <Capability Name="runFullTrust" />
+            
+        </Capabilities>
+        <Applications>
+            <Application
+                Id="io.github.ch1lam.autocv"
+                Description="Local-first AI resume workbench"
+                DisplayName="AutoCV"
+                ExecutableName="autocv"
+                EntryPoint="Windows.FullTrustApplication">
+                
+            </Application>
+        </Applications>
+        <Resources>
+            <Resource Language="en-us" />
+        </Resources>
+        <Dependencies>
+            <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.19041.0" />
+        </Dependencies>
+        <Properties>
+            <Framework>false</Framework>
+            <DisplayName>AutoCV</DisplayName>
+            <PublisherDisplayName>ch1lam</PublisherDisplayName>
+            <Description>Local-first AI resume workbench</Description>
+            <Logo>Assets\AppIcon.png</Logo>
+        </Properties>
+    </PackageInformation>
+    <SaveLocation PackagePath="autocv.msix" />
+    <PackageIntegrity>
+        <CertificatePath></CertificatePath>
+    </PackageIntegrity>
+</MsixPackagingToolTemplate>

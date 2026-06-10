@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.1.0"
+	},
+	"info": {
+		"0000": {
+			"ProductVersion": "0.1.0",
+			"CompanyName": "ch1lam",
+			"FileDescription": "Local-first AI resume workbench",
+			"LegalCopyright": "(c) 2026, ch1lam",
+			"ProductName": "AutoCV",
+			"Comments": "AutoCV desktop application"
+		}
+	}
+}
