@@ -35,6 +35,36 @@ tasks:
     cmds:
       - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
 
+  format:
+    summary: Formats Go source files
+    cmds:
+      - gofmt -w main.go internal migrations
+
+  format:check:
+    summary: Checks Go source formatting without changing files
+    cmds:
+      - test -z "$(gofmt -l main.go internal migrations)"
+
+  test:
+    summary: Runs Go and frontend tests
+    cmds:
+      - go test ./...
+      - npm --prefix frontend run test:run
+
+  typecheck:
+    summary: Runs the frontend TypeScript checker
+    cmds:
+      - npm --prefix frontend run typecheck
+
+  verify:
+    summary: Runs the M0 code verification suite
+    cmds:
+      - task: format:check
+      - task: test
+      - task: typecheck
+      - npm --prefix frontend run build
+      - git diff --check
+
   setup:docker:
     summary: Builds Docker image for cross-compilation (~800MB download)
     cmds:
