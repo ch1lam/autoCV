@@ -1,0 +1,13 @@
+Senior Backend Engineer
+
+Example Technology is looking for a backend engineer to design reliable
+services, improve performance, and support a high-concurrency transaction
+platform.
+
+Requirements:
+- Production experience with Go.
+- Experience with PostgreSQL or another relational database.
+- Understanding of distributed systems and service reliability.
+- English technical reading ability.
+
+Experience with message queues and event-driven architecture is preferred.

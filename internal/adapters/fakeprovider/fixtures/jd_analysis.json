@@ -1,0 +1,58 @@
+{
+  "role": "Senior Backend Engineer",
+  "company": "Example Technology",
+  "level": "Senior",
+  "language": "mixed",
+  "responsibilities": [
+    {
+      "id": "responsibility-services",
+      "text": "设计并交付稳定的后端服务",
+      "importance": 5,
+      "hard_constraint": false
+    },
+    {
+      "id": "responsibility-performance",
+      "text": "定位性能瓶颈并持续改善服务质量",
+      "importance": 4,
+      "hard_constraint": false
+    }
+  ],
+  "required_skills": [
+    {
+      "id": "required-go",
+      "text": "熟练使用 Go 开发生产服务",
+      "importance": 5,
+      "hard_constraint": true
+    },
+    {
+      "id": "required-sql",
+      "text": "具备 PostgreSQL 或同类关系数据库经验",
+      "importance": 4,
+      "hard_constraint": false
+    },
+    {
+      "id": "required-distributed",
+      "text": "理解分布式系统和服务可靠性",
+      "importance": 4,
+      "hard_constraint": false
+    }
+  ],
+  "preferred_skills": [
+    {
+      "id": "preferred-messaging",
+      "text": "有消息队列和事件驱动架构经验",
+      "importance": 2,
+      "hard_constraint": false
+    }
+  ],
+  "domain_signals": [
+    "高并发交易系统",
+    "服务稳定性"
+  ],
+  "screening_constraints": [
+    "能够阅读英文技术文档"
+  ],
+  "ambiguities": [
+    "未明确团队规模和管理职责"
+  ]
+}
