@@ -62,24 +62,26 @@ Markdown 职业资料
 
 ## 5. M0：工程基线
 
+状态：已完成（2026-06-10）
+
 ### 5.1 目标
 
 建立能够持续开发和验证的 Wails 桌面项目，不实现业务闭环。
 
 ### 5.2 任务
 
-- [ ] 初始化 Go module 和 Wails 3 React/TypeScript 项目。
-- [ ] 锁定 Go、Node、Wails 和前端包版本。
-- [ ] 建立 `internal/app`、`domain`、`ports`、`adapters` 和 `workflow` 目录。
-- [ ] 建立 SQLite 连接和迁移执行器。
-- [ ] 添加首个 schema migration。
-- [ ] 实现操作系统应用数据目录解析。
-- [ ] 建立结构化日志和默认脱敏规则。
-- [ ] 建立配置读取、保存和版本字段。
-- [ ] 建立 Fake Provider。
-- [ ] 建立测试使用的临时数据库和合成样本。
-- [ ] 建立 Go、TypeScript、格式化和测试命令。
-- [ ] 添加 `.gitignore`，排除私有样本、数据库、日志、Run 和导出目录。
+- [x] 初始化 Go module 和 Wails 3 React/TypeScript 项目。
+- [x] 锁定 Go、Node、Wails 和前端包版本。
+- [x] 建立 `internal/app`、`domain`、`ports`、`adapters` 和 `workflow` 目录。
+- [x] 建立 SQLite 连接和迁移执行器。
+- [x] 添加首个 schema migration。
+- [x] 实现操作系统应用数据目录解析。
+- [x] 建立结构化日志和默认脱敏规则。
+- [x] 建立配置读取、保存和版本字段。
+- [x] 建立 Fake Provider。
+- [x] 建立测试使用的临时数据库和合成样本。
+- [x] 建立 Go、TypeScript、格式化和测试命令。
+- [x] 添加 `.gitignore`，排除私有样本、数据库、日志、Run 和导出目录。
 
 ### 5.3 最小数据表
 

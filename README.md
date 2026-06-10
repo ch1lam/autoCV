@@ -170,15 +170,57 @@ The workflow is explicitly owned by Go rather than an Agent framework. See the [
 
 ## Development Status
 
-AutoCV has a development-ready MVP baseline. There is no application implementation yet.
+AutoCV has completed the M0 engineering baseline:
+
+- Wails 3 desktop shell with a React and TypeScript frontend.
+- Paper Trail match-review interface with functional first-screen controls.
+- Go health-check binding.
+- Operating-system application data directories.
+- SQLite startup migrations and the eight minimum M0 tables.
+- Versioned local configuration without API key fields.
+- Structured JSON logs with default content and secret redaction.
+- Strict JD Analysis Schema validation and a fixture-backed Fake Provider.
+- Go and frontend unit tests plus a unified verification command.
 
 The current implementation documents are:
 
 - [AutoCV MVP Product Specification](./docs/product/autocv-mvp-product-spec.md)
 - [AutoCV MVP Architecture](./docs/architecture/mvp-architecture.md)
 - [AutoCV MVP Implementation Plan](./docs/plans/mvp-implementation-plan.md)
+- [Paper Trail Design QA](./design-qa.md)
 
-The next work is M0 engineering setup followed by the first Markdown-to-PDF vertical slice. Real local resumes and JDs remain required for MVP validation, but they no longer block scaffolding and the first implementation loop.
+The next work is M1: the first Markdown-to-PDF vertical slice. Real local
+resumes and JDs remain required for MVP validation, but they are not committed
+to the repository.
+
+## Local Development
+
+Required versions are pinned in `go.mod`, `.nvmrc`, and
+`frontend/package.json`.
+
+```bash
+npm --prefix frontend install
+wails3 task verify
+wails3 task dev
+```
+
+Build the native application with:
+
+```bash
+wails3 build
+```
+
+On macOS, runtime data is stored under
+`~/Library/Application Support/AutoCV`. Set `AUTOCV_DATA_DIR` to isolate a
+development or test run:
+
+```bash
+AUTOCV_DATA_DIR=/tmp/autocv-dev wails3 task dev
+```
+
+The directory contains `autocv.db`, `config.json`, managed source files, run
+artifacts, exports, logs, and backups. These private runtime files are excluded
+from Git.
 
 ## License
 
