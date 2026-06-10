@@ -1,0 +1,185 @@
+# AutoCV
+
+AutoCV is a local-first, AI-native desktop application for turning a user's existing career material into a resume tailored to a specific job description.
+
+The long-term product has two core capabilities:
+
+- Tailor resumes to a JD with domain-specific analysis and review.
+- Discover suitable jobs automatically from public recruitment sources.
+
+The first MVP focuses only on the resume workflow. Job monitoring comes in the second phase.
+
+## Why AutoCV
+
+General-purpose AI can rewrite a resume, but the result usually depends on repeatedly collecting context, explaining constraints, adjusting prompts, checking unsupported claims, and repairing formatting.
+
+AutoCV aims to make that process repeatable:
+
+- Keep resumes, project notes, work history, and supporting material in a reusable local profile.
+- Analyze each JD against that profile.
+- Ask targeted questions when evidence is missing.
+- Surface strengths that are implied by real experience, not just restate the source text.
+- Apply a selectable level of resume packaging.
+- Let the user review the result instead of rebuilding the workflow for every application.
+
+## Current Product Direction
+
+- The first user is the project author; broader job seekers come later.
+- Chinese and English resumes are both in scope.
+- The initial focus is domestic job applications without designing out overseas JDs.
+- The product is a local-first desktop application.
+- Files and records stay on the user's machine.
+- AI requests should send only the content required for the current task.
+- Users should be able to export and delete their data.
+- No AutoCV cloud account is required.
+- The project is open source under the MIT license.
+
+These are product constraints. The current development baseline is captured in the [MVP product specification](./docs/product/autocv-mvp-product-spec.md), while broader sample-based validation remains documented in the [product definition plan](./docs/plans/autocv-product-definition-plan.md).
+
+## MVP Workflow
+
+The working MVP loop is:
+
+```text
+Local profile library
+  -> add or paste a target JD
+  -> analyze requirements
+  -> match profile evidence
+  -> ask for missing information
+  -> choose a packaging level
+  -> generate a tailored Markdown resume
+  -> review and lock important content
+  -> explain the main optimization choices
+  -> render and preview a PDF
+  -> export Markdown and PDF
+```
+
+The user's profile exists before a JD is added. Resumes and supporting material are reusable inputs; each new JD creates another tailored output.
+
+## MVP Inputs And Outputs
+
+Planned inputs:
+
+- PDF resumes
+- Word resumes
+- Markdown resumes
+- Project documentation
+- Work notes
+- Portfolio material
+- Pasted or imported JD text
+
+Planned outputs:
+
+- Tailored Markdown resume
+- Previewable PDF resume
+- Overall JD match score
+- Missing-requirement summary
+- Short explanation of the main changes
+- Source references for important generated highlights
+
+The first version does not need a full rich-text editor. A constrained Markdown editing experience is sufficient.
+
+## Resume Generation Principles
+
+AutoCV should do more than keyword replacement:
+
+- Infer relevant capabilities from the user's real work.
+- Explain business value that may be implicit in source material.
+- Select and reorder experience according to the JD.
+- Adjust language strength, keyword coverage, experience selection, inference depth, and career positioning through explicit packaging levels.
+- Ask the user when the available material is insufficient.
+- Show genuine gaps instead of pretending every requirement is covered.
+- Allow the user to lock content that AI must not rewrite.
+
+The exact boundaries for inference, estimated metrics, packaging strength, and source display are not final. They must be validated with real resumes and JDs before becoming product rules.
+
+The working quality bar is that the user should need only minor changes before submitting the result. A resume should normally stay within two pages, but longer resumes are allowed when the experience genuinely requires it; the product should not force every resume into one page.
+
+## MVP Scope
+
+The MVP includes:
+
+- A reusable local profile library
+- PDF, Word, and Markdown resume intake
+- Optional supporting-material intake
+- JD import and structured analysis
+- Profile-to-JD matching with an overall score
+- Missing-information questions
+- Tailored resume generation in Chinese and English
+- Multiple packaging levels
+- Content locking
+- Markdown output
+- PDF rendering and preview
+- Local export and deletion
+
+The MVP excludes:
+
+- Automatic recruitment-site monitoring
+- Cover letters
+- Application emails
+- Interview preparation
+- A full rich-text resume editor
+- Long-term behavioral memory beyond the user's profile material
+- External-user validation as a release requirement
+
+## Phase Two: Job Radar
+
+Automatic job discovery remains a core part of the AutoCV vision, but it is not part of the first implementation loop.
+
+The second phase may cover:
+
+- Monitoring official company career sites and public recruitment pages
+- Detecting new and changed jobs
+- Normalizing JD content
+- Deduplicating job records
+- Matching new jobs against the local profile
+- Triggering the resume workflow for promising roles
+
+Any crawler must respect public-access boundaries, robots.txt, website terms, and rate limits. It must not bypass login, captcha, paywalls, or anti-abuse controls.
+
+## AI Workflow
+
+The current conceptual workflow is:
+
+```text
+Profile Intake
+  -> JD Analysis
+  -> Profile Matching
+  -> Clarification
+  -> Resume Drafting
+  -> Resume Review
+  -> PDF Rendering
+```
+
+These names describe responsibilities, not a final commitment to seven independent agents or services. See [Agent.md](./Agent.md) for the current workflow notes.
+
+## Technical Direction
+
+Current MVP implementation choices:
+
+- Desktop shell: Wails 3
+- Core language: Go
+- Frontend: React and TypeScript
+- Local storage: SQLite
+- First AI integration: a provider adapter backed by OpenAI
+- PDF rendering: local Typst templates
+- Longer-term AI integration: multiple providers
+- PDF quality benchmark: the resume output currently achievable through the `kami` skill
+
+The workflow is explicitly owned by Go rather than an Agent framework. See the [MVP architecture](./docs/architecture/mvp-architecture.md).
+
+## Development Status
+
+AutoCV has a development-ready MVP baseline. There is no application implementation yet.
+
+The current implementation documents are:
+
+- [AutoCV MVP Product Specification](./docs/product/autocv-mvp-product-spec.md)
+- [AutoCV MVP Architecture](./docs/architecture/mvp-architecture.md)
+- [AutoCV MVP Implementation Plan](./docs/plans/mvp-implementation-plan.md)
+
+The next work is M0 engineering setup followed by the first Markdown-to-PDF vertical slice. Real local resumes and JDs remain required for MVP validation, but they no longer block scaffolding and the first implementation loop.
+
+## License
+
+MIT
