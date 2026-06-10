@@ -3,10 +3,14 @@ package main
 import (
 	"context"
 	"embed"
-	"log"
+	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
 
 	"github.com/ch1lam/autocv/internal/adapters/configfile"
 	"github.com/ch1lam/autocv/internal/adapters/filesystem"
+	"github.com/ch1lam/autocv/internal/adapters/logging"
 	"github.com/ch1lam/autocv/internal/adapters/sqlite"
 	appservice "github.com/ch1lam/autocv/internal/app"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -16,20 +20,41 @@ import (
 var assets embed.FS
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "AutoCV failed: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	paths, err := filesystem.DefaultPaths()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	if err := paths.Ensure(); err != nil {
-		log.Fatal(err)
+		return err
 	}
+
+	logger, err := logging.NewFile(
+		filepath.Join(paths.Logs, "autocv.log"),
+		slog.LevelInfo,
+	)
+	if err != nil {
+		return err
+	}
+	defer logger.Close()
+	slog.SetDefault(logger.Logger)
+	slog.Info("application.start")
+
 	if _, err := configfile.New(paths.Config).LoadOrCreate(); err != nil {
-		log.Fatal(err)
+		slog.Error("config.load.failed", slog.Any("error", err))
+		return err
 	}
 
 	db, err := sqlite.Open(context.Background(), paths.Database)
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("database.open.failed", slog.Any("error", err))
+		return err
 	}
 	defer db.Close()
 
@@ -63,6 +88,9 @@ func main() {
 	})
 
 	if err := app.Run(); err != nil {
-		log.Fatal(err)
+		slog.Error("application.run.failed", slog.Any("error", err))
+		return err
 	}
+	slog.Info("application.stop")
+	return nil
 }
