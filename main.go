@@ -89,6 +89,11 @@ func run() error {
 		wailsdialog.NewMarkdownPicker(app),
 		systemclock.Clock{},
 	)))
+	app.RegisterService(application.NewService(appservice.NewJDService(
+		sqlite.NewJDRepository(db),
+		fakeprovider.New(),
+		systemclock.Clock{},
+	)))
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:     "AutoCV",

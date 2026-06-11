@@ -165,6 +165,185 @@ export class ImportMarkdownResult {
     }
 }
 
+export class JDAnalysisSummary {
+    "role": string;
+    "company": string;
+    "level": string;
+    "language": string;
+    "responsibilities": JDRequirementSummary[];
+    "requiredSkills": JDRequirementSummary[];
+    "preferredSkills": JDRequirementSummary[];
+    "domainSignals": string[];
+    "screeningConstraints": string[];
+    "ambiguities": string[];
+
+    /** Creates a new JDAnalysisSummary instance. */
+    constructor($$source: Partial<JDAnalysisSummary> = {}) {
+        if (!("role" in $$source)) {
+            this["role"] = "";
+        }
+        if (!("company" in $$source)) {
+            this["company"] = "";
+        }
+        if (!("level" in $$source)) {
+            this["level"] = "";
+        }
+        if (!("language" in $$source)) {
+            this["language"] = "";
+        }
+        if (!("responsibilities" in $$source)) {
+            this["responsibilities"] = [];
+        }
+        if (!("requiredSkills" in $$source)) {
+            this["requiredSkills"] = [];
+        }
+        if (!("preferredSkills" in $$source)) {
+            this["preferredSkills"] = [];
+        }
+        if (!("domainSignals" in $$source)) {
+            this["domainSignals"] = [];
+        }
+        if (!("screeningConstraints" in $$source)) {
+            this["screeningConstraints"] = [];
+        }
+        if (!("ambiguities" in $$source)) {
+            this["ambiguities"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new JDAnalysisSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): JDAnalysisSummary {
+        const $$createField4_0 = $$createType5;
+        const $$createField5_0 = $$createType5;
+        const $$createField6_0 = $$createType5;
+        const $$createField7_0 = $$createType3;
+        const $$createField8_0 = $$createType3;
+        const $$createField9_0 = $$createType3;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("responsibilities" in $$parsedSource) {
+            $$parsedSource["responsibilities"] = $$createField4_0($$parsedSource["responsibilities"]);
+        }
+        if ("requiredSkills" in $$parsedSource) {
+            $$parsedSource["requiredSkills"] = $$createField5_0($$parsedSource["requiredSkills"]);
+        }
+        if ("preferredSkills" in $$parsedSource) {
+            $$parsedSource["preferredSkills"] = $$createField6_0($$parsedSource["preferredSkills"]);
+        }
+        if ("domainSignals" in $$parsedSource) {
+            $$parsedSource["domainSignals"] = $$createField7_0($$parsedSource["domainSignals"]);
+        }
+        if ("screeningConstraints" in $$parsedSource) {
+            $$parsedSource["screeningConstraints"] = $$createField8_0($$parsedSource["screeningConstraints"]);
+        }
+        if ("ambiguities" in $$parsedSource) {
+            $$parsedSource["ambiguities"] = $$createField9_0($$parsedSource["ambiguities"]);
+        }
+        return new JDAnalysisSummary($$parsedSource as Partial<JDAnalysisSummary>);
+    }
+}
+
+export class JDRequirementSummary {
+    "id": string;
+    "text": string;
+    "importance": number;
+    "hardConstraint": boolean;
+
+    /** Creates a new JDRequirementSummary instance. */
+    constructor($$source: Partial<JDRequirementSummary> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("text" in $$source)) {
+            this["text"] = "";
+        }
+        if (!("importance" in $$source)) {
+            this["importance"] = 0;
+        }
+        if (!("hardConstraint" in $$source)) {
+            this["hardConstraint"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new JDRequirementSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): JDRequirementSummary {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new JDRequirementSummary($$parsedSource as Partial<JDRequirementSummary>);
+    }
+}
+
+export class JDWorkspace {
+    "id": string;
+    "title": string;
+    "company": string;
+    "rawText": string;
+    "language": string;
+    "analysisStatus": string;
+    "analysisError": string;
+    "updatedAt": string;
+    "warnings": string[];
+    "analysis": JDAnalysisSummary | null;
+
+    /** Creates a new JDWorkspace instance. */
+    constructor($$source: Partial<JDWorkspace> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("company" in $$source)) {
+            this["company"] = "";
+        }
+        if (!("rawText" in $$source)) {
+            this["rawText"] = "";
+        }
+        if (!("language" in $$source)) {
+            this["language"] = "";
+        }
+        if (!("analysisStatus" in $$source)) {
+            this["analysisStatus"] = "";
+        }
+        if (!("analysisError" in $$source)) {
+            this["analysisError"] = "";
+        }
+        if (!("updatedAt" in $$source)) {
+            this["updatedAt"] = "";
+        }
+        if (!("warnings" in $$source)) {
+            this["warnings"] = [];
+        }
+        if (!("analysis" in $$source)) {
+            this["analysis"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new JDWorkspace instance from a string or object.
+     */
+    static createFrom($$source: any = {}): JDWorkspace {
+        const $$createField8_0 = $$createType3;
+        const $$createField9_0 = $$createType7;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("warnings" in $$parsedSource) {
+            $$parsedSource["warnings"] = $$createField8_0($$parsedSource["warnings"]);
+        }
+        if ("analysis" in $$parsedSource) {
+            $$parsedSource["analysis"] = $$createField9_0($$parsedSource["analysis"]);
+        }
+        return new JDWorkspace($$parsedSource as Partial<JDWorkspace>);
+    }
+}
+
 export class ProfileOverview {
     "profileId": string;
     "name": string;
@@ -197,8 +376,8 @@ export class ProfileOverview {
      * Creates a new ProfileOverview instance from a string or object.
      */
     static createFrom($$source: any = {}): ProfileOverview {
-        const $$createField3_0 = $$createType4;
-        const $$createField4_0 = $$createType6;
+        const $$createField3_0 = $$createType8;
+        const $$createField4_0 = $$createType10;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("documents" in $$parsedSource) {
             $$parsedSource["documents"] = $$createField3_0($$parsedSource["documents"]);
@@ -252,6 +431,10 @@ const $$createType0 = EvidenceSourceSummary.createFrom;
 const $$createType1 = $Create.Array($$createType0);
 const $$createType2 = SourceDocumentSummary.createFrom;
 const $$createType3 = $Create.Array($Create.Any);
-const $$createType4 = $Create.Array($$createType2);
-const $$createType5 = EvidenceSummary.createFrom;
-const $$createType6 = $Create.Array($$createType5);
+const $$createType4 = JDRequirementSummary.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = JDAnalysisSummary.createFrom;
+const $$createType7 = $Create.Nullable($$createType6);
+const $$createType8 = $Create.Array($$createType2);
+const $$createType9 = EvidenceSummary.createFrom;
+const $$createType10 = $Create.Array($$createType9);
