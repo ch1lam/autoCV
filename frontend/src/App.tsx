@@ -1,41 +1,47 @@
 import {
-  IconArchive,
-  IconCheck,
-  IconChevronDown,
-  IconChevronRight,
-  IconChevronUp,
-  IconCopy,
-  IconDatabase,
-  IconEdit,
-  IconFileDescription,
-  IconFileText,
-  IconFileTypePdf,
-  IconInfoCircle,
-  IconPointFilled,
-  IconRefresh,
-  IconSettings,
-  IconTargetArrow,
-  IconUpload,
-  IconX,
+    IconArchive,
+    IconCheck,
+    IconChevronDown,
+    IconChevronRight,
+    IconChevronUp,
+    IconCopy,
+    IconDatabase,
+    IconEdit,
+    IconFileDescription,
+    IconFileText,
+    IconFileTypePdf,
+    IconInfoCircle,
+    IconPointFilled,
+    IconRefresh,
+    IconSettings,
+    IconTargetArrow,
+    IconUpload,
+    IconX,
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  HealthService,
-  ProfileService,
-  type EvidenceSourceSummary,
-  type EvidenceSummary,
-  type ProfileOverview,
+    HealthService,
+    JDService,
+    ProfileService,
+    type EvidenceSourceSummary,
+    type EvidenceSummary,
+    type JDWorkspace as JDWorkspaceModel,
+    type ProfileOverview,
 } from "../bindings/github.com/ch1lam/autocv/internal/app";
+import JDWorkspace, {
+    type JDWorkspaceFeedback,
+    type JDWorkspaceStatus,
+} from "./JDWorkspace";
 import {
-  allRequirements,
-  type MatchStatus,
-  requirementGroups,
-  type Requirement,
+    allRequirements,
+    requirementGroups,
+    type MatchStatus,
+    type Requirement,
 } from "./mockData";
 import ProfileLibrary, {
-  type ProfileFeedback,
-  type ProfileStatus,
+    type ProfileFeedback,
+    type ProfileStatus,
 } from "./ProfileLibrary";
 
 type HealthState = "checking" | "ready" | "preview";
@@ -94,6 +100,16 @@ function App() {
   const [profileFeedback, setProfileFeedback] =
     useState<ProfileFeedback | null>(null);
   const [isImportingProfile, setIsImportingProfile] = useState(false);
+  const [jdWorkspace, setJDWorkspace] =
+    useState<JDWorkspaceModel | null>(null);
+  const [jdStatus, setJDStatus] = useState<JDWorkspaceStatus>("loading");
+  const [jdError, setJDError] = useState("");
+  const [jdText, setJDText] = useState("");
+  const [jdDirty, setJDDirty] = useState(false);
+  const [jdFeedback, setJDFeedback] =
+    useState<JDWorkspaceFeedback | null>(null);
+  const [isSavingJD, setIsSavingJD] = useState(false);
+  const [isAnalyzingJD, setIsAnalyzingJD] = useState(false);
   const [selectedProfileEvidenceId, setSelectedProfileEvidenceId] =
     useState("");
   const [selectedProfileSourceId, setSelectedProfileSourceId] = useState("");
@@ -131,17 +147,40 @@ function App() {
     }
   }, []);
 
+  const applyJDWorkspace = useCallback((workspace: JDWorkspaceModel) => {
+    setJDWorkspace(workspace);
+    setJDText(workspace.rawText);
+    setJDDirty(false);
+    setJDStatus("ready");
+    setJDError("");
+  }, []);
+
+  const refreshJD = useCallback(async () => {
+    setJDStatus("loading");
+    setJDError("");
+    try {
+      const workspace = await JDService.GetWorkspace();
+      applyJDWorkspace(workspace);
+    } catch (error) {
+      setJDStatus("error");
+      setJDError(
+        error instanceof Error ? error.message : "本地 JD 服务暂不可用。",
+      );
+    }
+  }, [applyJDWorkspace]);
+
   useEffect(() => {
     HealthService.Check()
       .then((status) => setHealth(status.status === "ready" ? "ready" : "preview"))
       .catch(() => setHealth("preview"));
     void refreshProfile();
+    void refreshJD();
 
     return () => {
       window.clearTimeout(analyseTimer.current);
       window.clearTimeout(noticeTimer.current);
     };
-  }, [refreshProfile]);
+  }, [refreshJD, refreshProfile]);
 
   const selectedRequirement =
     allRequirements.find((requirement) => requirement.id === selectedId) ??
@@ -182,7 +221,11 @@ function App() {
   };
 
   const handleNav = (label: string) => {
-    if (label === "资料库" || label === "匹配审阅") {
+    if (
+      label === "资料库" ||
+      label === "JD 工作区" ||
+      label === "匹配审阅"
+    ) {
       setActiveNav(label);
       return;
     }
@@ -238,6 +281,80 @@ function App() {
 
   const handleSelectProfileSource = (source: EvidenceSourceSummary) => {
     setSelectedProfileSourceId(source.chunkId);
+  };
+
+  const handleJDTextChange = (value: string) => {
+    setJDText(value);
+    setJDDirty(value.trim() !== (jdWorkspace?.rawText ?? ""));
+    setJDFeedback(null);
+  };
+
+  const handleJDSave = async () => {
+    if (jdText.trim() === "") {
+      setJDFeedback({
+        tone: "error",
+        text: "请先粘贴岗位 JD，再保存原文。",
+      });
+      return;
+    }
+
+    setIsSavingJD(true);
+    setJDFeedback(null);
+    try {
+      const workspace = await JDService.SaveDraft(jdText);
+      applyJDWorkspace(workspace);
+      setJDFeedback({
+        tone: "success",
+        text: "原始 JD 已保存；旧分析结果已失效。",
+      });
+    } catch (error) {
+      setJDFeedback({
+        tone: "error",
+        text:
+          error instanceof Error
+            ? `保存失败：${error.message}`
+            : "保存失败，请重试。",
+      });
+    } finally {
+      setIsSavingJD(false);
+    }
+  };
+
+  const handleJDAnalyze = async () => {
+    if (jdText.trim() === "") {
+      setJDFeedback({
+        tone: "error",
+        text: "请先粘贴岗位 JD，再开始分析。",
+      });
+      return;
+    }
+
+    setIsAnalyzingJD(true);
+    setJDFeedback(null);
+    try {
+      const workspace = await JDService.Analyze(jdText);
+      applyJDWorkspace(workspace);
+      setJDFeedback({
+        tone: "success",
+        text: "JD 分析完成，结构化结果已通过 Go 侧校验。",
+      });
+    } catch (error) {
+      setJDFeedback({
+        tone: "error",
+        text:
+          error instanceof Error
+            ? `分析失败：${error.message}`
+            : "分析失败，请修改 JD 后重试。",
+      });
+      try {
+        const workspace = await JDService.GetWorkspace();
+        applyJDWorkspace(workspace);
+      } catch {
+        setJDStatus("error");
+      }
+    } finally {
+      setIsAnalyzingJD(false);
+    }
   };
 
   const toggleGroup = (groupId: string) => {
@@ -338,7 +455,7 @@ function App() {
                 LZ
               </span>
               <span>
-                <strong>黎智林</strong>
+                <strong>李志林</strong>
                 <small>/ {profileOverview?.name ?? "主资料库"}</small>
               </span>
               <IconChevronDown aria-hidden="true" size={17} stroke={1.6} />
@@ -372,6 +489,7 @@ function App() {
           <div className="analysis-state" aria-live="polite">
             <span className="analysis-icon">
               {isAnalysing ||
+              (activeNav === "JD 工作区" && isAnalyzingJD) ||
               (activeNav === "资料库" && profileStatus === "loading") ? (
                 <IconRefresh
                   aria-hidden="true"
@@ -395,6 +513,27 @@ function App() {
                       : `${profileOverview?.documents.length ?? 0} 个文档 · ${
                           profileOverview?.evidence.length ?? 0
                         } 条证据`}
+                  </small>
+                </>
+              ) : activeNav === "JD 工作区" ? (
+                <>
+                  <strong>
+                    {isAnalyzingJD
+                      ? "分析中"
+                      : jdDirty
+                        ? "结果已失效"
+                        : jdWorkspace?.analysisStatus === "succeeded"
+                          ? "分析完成"
+                          : "等待分析"}
+                  </strong>
+                  <small>
+                    {isAnalyzingJD
+                      ? "正在校验结构化结果"
+                      : jdDirty
+                        ? "原始 JD 已修改"
+                        : jdWorkspace?.analysis
+                          ? `${jdWorkspace.analysis.requiredSkills.length} 项必要技能`
+                          : "粘贴岗位描述开始"}
                   </small>
                 </>
               ) : (
@@ -428,6 +567,38 @@ function App() {
                 >
                   <IconUpload aria-hidden="true" size={18} stroke={1.65} />
                   {isImportingProfile ? "正在导入" : "导入 Markdown"}
+                </button>
+              </>
+            ) : activeNav === "JD 工作区" ? (
+              <>
+                <button
+                  className="button button--secondary"
+                  disabled={
+                    !jdDirty ||
+                    isSavingJD ||
+                    isAnalyzingJD ||
+                    jdText.trim() === ""
+                  }
+                  onClick={() => void handleJDSave()}
+                  type="button"
+                >
+                  {isSavingJD ? "正在保存" : "保存原文"}
+                </button>
+                <button
+                  className="button button--primary"
+                  disabled={
+                    isSavingJD || isAnalyzingJD || jdText.trim() === ""
+                  }
+                  onClick={() => void handleJDAnalyze()}
+                  type="button"
+                >
+                  <IconRefresh
+                    aria-hidden="true"
+                    className={isAnalyzingJD ? "is-spinning" : ""}
+                    size={18}
+                    stroke={1.65}
+                  />
+                  {isAnalyzingJD ? "正在分析" : "分析 JD"}
                 </button>
               </>
             ) : (
@@ -471,6 +642,21 @@ function App() {
             selectedEvidenceId={selectedProfileEvidenceId}
             selectedSourceId={selectedProfileSourceId}
             status={profileStatus}
+          />
+        ) : activeNav === "JD 工作区" ? (
+          <JDWorkspace
+            error={jdError}
+            feedback={jdFeedback}
+            isAnalyzing={isAnalyzingJD}
+            isDirty={jdDirty}
+            isSaving={isSavingJD}
+            onAnalyze={() => void handleJDAnalyze()}
+            onChange={handleJDTextChange}
+            onRetry={() => void refreshJD()}
+            onSave={() => void handleJDSave()}
+            rawText={jdText}
+            status={jdStatus}
+            workspace={jdWorkspace}
           />
         ) : (
           <div className="review-layout">

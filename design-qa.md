@@ -6,10 +6,15 @@
 - Focused comparison: `docs/design/paper-trail-focused-comparison.png`
 - Profile Library screenshot: `docs/design/profile-library-implementation.png`
 - Profile Library comparison: `docs/design/profile-library-comparison.png`
+- JD Workspace screenshot: `docs/design/jd-workspace-implementation.png`
+- JD Workspace comparison: `docs/design/jd-workspace-comparison.png`
 - Viewport: `1487 x 1058`
+- JD Workspace native viewport: `1486 x 944`
 - Match Review state: first technical requirement selected, first evidence source expanded
 - Profile Library state: synthetic Markdown imported, second Evidence selected,
   duplicate import feedback visible
+- JD Workspace state: synthetic JD analyzed, original text and validated
+  requirements visible together
 
 ## Comparison Result
 
@@ -23,6 +28,11 @@ The Profile Library was then captured from the native Wails application and
 reviewed beside the same Paper Trail source. The comparison covers the shared
 navigation and top bar, document and Evidence density, selected-row treatment,
 feedback hierarchy, and the source inspector.
+
+The JD Workspace was captured after a real Fake Provider analysis and reviewed
+beside the Paper Trail source. The comparison covers the shared shell, raw-text
+editing surface, status hierarchy, structured requirement density, and the
+right-side analysis inspector.
 
 No actionable P0, P1, or P2 differences remain.
 
@@ -49,6 +59,10 @@ No actionable P0, P1, or P2 differences remain.
 - Successful Markdown import and persisted overview refresh
 - Duplicate-content feedback without creating a second document
 - Evidence selection and Markdown source locator updates
+- Raw JD paste, draft save, and validated Fake Provider analysis
+- Original JD and structured requirements visible together
+- Immediate stale-result invalidation after editing analyzed JD
+- Persisted draft recovery after restarting the native application
 
 ## Verification
 

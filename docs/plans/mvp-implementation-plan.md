@@ -146,11 +146,11 @@ Markdown 职业资料
 
 任务：
 
-- [ ] 提供 JD 粘贴工作区。
-- [ ] 保存原始 JD。
-- [ ] 定义并校验 JD Analysis Schema。
-- [ ] 接入 Fake Provider 分析。
-- [ ] 展示职责、必要技能、加分项和筛选条件。
+- [x] 提供 JD 粘贴工作区。
+- [x] 保存原始 JD。
+- [x] 定义并校验 JD Analysis Schema。
+- [x] 接入 Fake Provider 分析。
+- [x] 展示职责、必要技能、加分项和筛选条件。
 
 验收：
 
