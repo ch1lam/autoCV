@@ -1,0 +1,83 @@
+package filesystem
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestManagedFilesSaveReadAndDelete(t *testing.T) {
+	root := t.TempDir()
+	store, err := NewManagedFiles(root)
+	if err != nil {
+		t.Fatalf("create managed file store: %v", err)
+	}
+	contents := []byte("# Profile\n\nPrivate career content.")
+
+	managedPath, err := store.SaveMarkdown(
+		"profile-1",
+		"document-1",
+		contents,
+	)
+	if err != nil {
+		t.Fatalf("save Markdown: %v", err)
+	}
+	expectedPath := "sources/profile-1/document-1/source.md"
+	if managedPath != expectedPath {
+		t.Fatalf("expected path %q, got %q", expectedPath, managedPath)
+	}
+
+	actual, err := store.Read(managedPath)
+	if err != nil {
+		t.Fatalf("read Markdown: %v", err)
+	}
+	if string(actual) != string(contents) {
+		t.Fatalf("managed contents differ")
+	}
+
+	info, err := os.Stat(filepath.Join(root, filepath.FromSlash(managedPath)))
+	if err != nil {
+		t.Fatalf("stat managed file: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("expected mode 0600, got %o", info.Mode().Perm())
+	}
+
+	if err := store.Delete(managedPath); err != nil {
+		t.Fatalf("delete managed file: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(managedPath))); !os.IsNotExist(err) {
+		t.Fatalf("expected managed file to be deleted, got %v", err)
+	}
+}
+
+func TestManagedFilesRejectsPathTraversal(t *testing.T) {
+	store, err := NewManagedFiles(t.TempDir())
+	if err != nil {
+		t.Fatalf("create managed file store: %v", err)
+	}
+
+	for _, path := range []string{
+		"../private.md",
+		"/tmp/private.md",
+		"sources/../../private.md",
+	} {
+		if _, err := store.Read(path); err == nil {
+			t.Fatalf("expected path %q to be rejected", path)
+		}
+	}
+}
+
+func TestManagedFilesRejectsUnsafeIDs(t *testing.T) {
+	store, err := NewManagedFiles(t.TempDir())
+	if err != nil {
+		t.Fatalf("create managed file store: %v", err)
+	}
+
+	if _, err := store.SaveMarkdown("../profile", "document", nil); err == nil {
+		t.Fatal("expected unsafe profile id error")
+	}
+	if _, err := store.SaveMarkdown("profile", "nested/document", nil); err == nil {
+		t.Fatal("expected unsafe document id error")
+	}
+}
