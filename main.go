@@ -9,9 +9,13 @@ import (
 	"path/filepath"
 
 	"github.com/ch1lam/autocv/internal/adapters/configfile"
+	"github.com/ch1lam/autocv/internal/adapters/fakeprovider"
 	"github.com/ch1lam/autocv/internal/adapters/filesystem"
 	"github.com/ch1lam/autocv/internal/adapters/logging"
+	markdownparser "github.com/ch1lam/autocv/internal/adapters/markdown"
 	"github.com/ch1lam/autocv/internal/adapters/sqlite"
+	"github.com/ch1lam/autocv/internal/adapters/systemclock"
+	"github.com/ch1lam/autocv/internal/adapters/wailsdialog"
 	appservice "github.com/ch1lam/autocv/internal/app"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -58,6 +62,12 @@ func run() error {
 	}
 	defer db.Close()
 
+	managedFiles, err := filesystem.NewManagedFiles(paths.Root)
+	if err != nil {
+		slog.Error("managed.files.open.failed", slog.Any("error", err))
+		return err
+	}
+
 	app := application.New(application.Options{
 		Name:        "AutoCV",
 		Description: "Local-first AI resume workbench",
@@ -71,6 +81,14 @@ func run() error {
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
 	})
+	app.RegisterService(application.NewService(appservice.NewProfileService(
+		sqlite.NewProfileRepository(db),
+		markdownparser.New(),
+		fakeprovider.New(),
+		managedFiles,
+		wailsdialog.NewMarkdownPicker(app),
+		systemclock.Clock{},
+	)))
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:     "AutoCV",

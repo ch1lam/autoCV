@@ -5,6 +5,92 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+export class EvidenceSourceSummary {
+    "chunkId": string;
+    "documentId": string;
+    "chunkText": string;
+    "locatorJson": string;
+    "quoteStart": number;
+    "quoteEnd": number;
+
+    /** Creates a new EvidenceSourceSummary instance. */
+    constructor($$source: Partial<EvidenceSourceSummary> = {}) {
+        if (!("chunkId" in $$source)) {
+            this["chunkId"] = "";
+        }
+        if (!("documentId" in $$source)) {
+            this["documentId"] = "";
+        }
+        if (!("chunkText" in $$source)) {
+            this["chunkText"] = "";
+        }
+        if (!("locatorJson" in $$source)) {
+            this["locatorJson"] = "";
+        }
+        if (!("quoteStart" in $$source)) {
+            this["quoteStart"] = 0;
+        }
+        if (!("quoteEnd" in $$source)) {
+            this["quoteEnd"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new EvidenceSourceSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): EvidenceSourceSummary {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new EvidenceSourceSummary($$parsedSource as Partial<EvidenceSourceSummary>);
+    }
+}
+
+export class EvidenceSummary {
+    "id": string;
+    "kind": string;
+    "title": string;
+    "content": string;
+    "confidence": number;
+    "sources": EvidenceSourceSummary[];
+
+    /** Creates a new EvidenceSummary instance. */
+    constructor($$source: Partial<EvidenceSummary> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("content" in $$source)) {
+            this["content"] = "";
+        }
+        if (!("confidence" in $$source)) {
+            this["confidence"] = 0;
+        }
+        if (!("sources" in $$source)) {
+            this["sources"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new EvidenceSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): EvidenceSummary {
+        const $$createField5_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("sources" in $$parsedSource) {
+            $$parsedSource["sources"] = $$createField5_0($$parsedSource["sources"]);
+        }
+        return new EvidenceSummary($$parsedSource as Partial<EvidenceSummary>);
+    }
+}
+
 export class HealthStatus {
     "application": string;
     "status": string;
@@ -29,3 +115,143 @@ export class HealthStatus {
         return new HealthStatus($$parsedSource as Partial<HealthStatus>);
     }
 }
+
+export class ImportMarkdownResult {
+    "cancelled": boolean;
+    "duplicate": boolean;
+    "document": SourceDocumentSummary;
+    "chunkCount": number;
+    "evidenceCount": number;
+    "warnings": string[];
+
+    /** Creates a new ImportMarkdownResult instance. */
+    constructor($$source: Partial<ImportMarkdownResult> = {}) {
+        if (!("cancelled" in $$source)) {
+            this["cancelled"] = false;
+        }
+        if (!("duplicate" in $$source)) {
+            this["duplicate"] = false;
+        }
+        if (!("document" in $$source)) {
+            this["document"] = (new SourceDocumentSummary());
+        }
+        if (!("chunkCount" in $$source)) {
+            this["chunkCount"] = 0;
+        }
+        if (!("evidenceCount" in $$source)) {
+            this["evidenceCount"] = 0;
+        }
+        if (!("warnings" in $$source)) {
+            this["warnings"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ImportMarkdownResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ImportMarkdownResult {
+        const $$createField2_0 = $$createType2;
+        const $$createField5_0 = $$createType3;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("document" in $$parsedSource) {
+            $$parsedSource["document"] = $$createField2_0($$parsedSource["document"]);
+        }
+        if ("warnings" in $$parsedSource) {
+            $$parsedSource["warnings"] = $$createField5_0($$parsedSource["warnings"]);
+        }
+        return new ImportMarkdownResult($$parsedSource as Partial<ImportMarkdownResult>);
+    }
+}
+
+export class ProfileOverview {
+    "profileId": string;
+    "name": string;
+    "defaultLanguage": string;
+    "documents": SourceDocumentSummary[];
+    "evidence": EvidenceSummary[];
+
+    /** Creates a new ProfileOverview instance. */
+    constructor($$source: Partial<ProfileOverview> = {}) {
+        if (!("profileId" in $$source)) {
+            this["profileId"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("defaultLanguage" in $$source)) {
+            this["defaultLanguage"] = "";
+        }
+        if (!("documents" in $$source)) {
+            this["documents"] = [];
+        }
+        if (!("evidence" in $$source)) {
+            this["evidence"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ProfileOverview instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ProfileOverview {
+        const $$createField3_0 = $$createType4;
+        const $$createField4_0 = $$createType6;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("documents" in $$parsedSource) {
+            $$parsedSource["documents"] = $$createField3_0($$parsedSource["documents"]);
+        }
+        if ("evidence" in $$parsedSource) {
+            $$parsedSource["evidence"] = $$createField4_0($$parsedSource["evidence"]);
+        }
+        return new ProfileOverview($$parsedSource as Partial<ProfileOverview>);
+    }
+}
+
+export class SourceDocumentSummary {
+    "id": string;
+    "originalName": string;
+    "kind": string;
+    "parseStatus": string;
+    "importedAt": string;
+
+    /** Creates a new SourceDocumentSummary instance. */
+    constructor($$source: Partial<SourceDocumentSummary> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("originalName" in $$source)) {
+            this["originalName"] = "";
+        }
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+        if (!("parseStatus" in $$source)) {
+            this["parseStatus"] = "";
+        }
+        if (!("importedAt" in $$source)) {
+            this["importedAt"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SourceDocumentSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SourceDocumentSummary {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SourceDocumentSummary($$parsedSource as Partial<SourceDocumentSummary>);
+    }
+}
+
+// Private type creation functions
+const $$createType0 = EvidenceSourceSummary.createFrom;
+const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = SourceDocumentSummary.createFrom;
+const $$createType3 = $Create.Array($Create.Any);
+const $$createType4 = $Create.Array($$createType2);
+const $$createType5 = EvidenceSummary.createFrom;
+const $$createType6 = $Create.Array($$createType5);
