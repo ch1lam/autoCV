@@ -4,8 +4,12 @@
 - Implementation screenshot: `docs/design/paper-trail-implementation.png`
 - Full comparison: `docs/design/paper-trail-comparison.png`
 - Focused comparison: `docs/design/paper-trail-focused-comparison.png`
+- Profile Library screenshot: `docs/design/profile-library-implementation.png`
+- Profile Library comparison: `docs/design/profile-library-comparison.png`
 - Viewport: `1487 x 1058`
-- State: Match Review, first technical requirement selected, first evidence source expanded
+- Match Review state: first technical requirement selected, first evidence source expanded
+- Profile Library state: synthetic Markdown imported, second Evidence selected,
+  duplicate import feedback visible
 
 ## Comparison Result
 
@@ -14,6 +18,11 @@ viewport and reviewed side by side. The full-view comparison covers layout,
 navigation, score, requirement groups, and the evidence inspector. The focused
 comparison covers requirement typography, status hierarchy, source locations,
 source content, and the match explanation.
+
+The Profile Library was then captured from the native Wails application and
+reviewed beside the same Paper Trail source. The comparison covers the shared
+navigation and top bar, document and Evidence density, selected-row treatment,
+feedback hierarchy, and the source inspector.
 
 No actionable P0, P1, or P2 differences remain.
 
@@ -35,6 +44,11 @@ No actionable P0, P1, or P2 differences remain.
 - Reanalysis state
 - Resume generation confirmation dialog
 - Responsive evidence-inspector dismissal
+- Empty Profile Library state
+- Native Markdown file selection
+- Successful Markdown import and persisted overview refresh
+- Duplicate-content feedback without creating a second document
+- Evidence selection and Markdown source locator updates
 
 ## Verification
 

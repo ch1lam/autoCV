@@ -15,17 +15,28 @@ import {
   IconRefresh,
   IconSettings,
   IconTargetArrow,
+  IconUpload,
   IconX,
 } from "@tabler/icons-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { HealthService } from "../bindings/github.com/ch1lam/autocv/internal/app";
+import {
+  HealthService,
+  ProfileService,
+  type EvidenceSourceSummary,
+  type EvidenceSummary,
+  type ProfileOverview,
+} from "../bindings/github.com/ch1lam/autocv/internal/app";
 import {
   allRequirements,
   type MatchStatus,
   requirementGroups,
   type Requirement,
 } from "./mockData";
+import ProfileLibrary, {
+  type ProfileFeedback,
+  type ProfileStatus,
+} from "./ProfileLibrary";
 
 type HealthState = "checking" | "ready" | "preview";
 type Filter = "all" | MatchStatus;
@@ -75,19 +86,62 @@ function App() {
   const [generateOpen, setGenerateOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [notice, setNotice] = useState("");
+  const [profileOverview, setProfileOverview] =
+    useState<ProfileOverview | null>(null);
+  const [profileStatus, setProfileStatus] =
+    useState<ProfileStatus>("loading");
+  const [profileError, setProfileError] = useState("");
+  const [profileFeedback, setProfileFeedback] =
+    useState<ProfileFeedback | null>(null);
+  const [isImportingProfile, setIsImportingProfile] = useState(false);
+  const [selectedProfileEvidenceId, setSelectedProfileEvidenceId] =
+    useState("");
+  const [selectedProfileSourceId, setSelectedProfileSourceId] = useState("");
   const analyseTimer = useRef<number>();
   const noticeTimer = useRef<number>();
+
+  const refreshProfile = useCallback(async () => {
+    setProfileStatus("loading");
+    setProfileError("");
+    try {
+      const overview = await ProfileService.GetOverview();
+      setProfileOverview(overview);
+      setSelectedProfileEvidenceId((current) => {
+        if (overview.evidence.some((item) => item.id === current)) {
+          return current;
+        }
+        return overview.evidence[0]?.id ?? "";
+      });
+      setSelectedProfileSourceId((current) => {
+        if (
+          overview.evidence.some((item) =>
+            item.sources.some((source) => source.chunkId === current),
+          )
+        ) {
+          return current;
+        }
+        return overview.evidence[0]?.sources[0]?.chunkId ?? "";
+      });
+      setProfileStatus("ready");
+    } catch (error) {
+      setProfileStatus("error");
+      setProfileError(
+        error instanceof Error ? error.message : "本地资料服务暂不可用。",
+      );
+    }
+  }, []);
 
   useEffect(() => {
     HealthService.Check()
       .then((status) => setHealth(status.status === "ready" ? "ready" : "preview"))
       .catch(() => setHealth("preview"));
+    void refreshProfile();
 
     return () => {
       window.clearTimeout(analyseTimer.current);
       window.clearTimeout(noticeTimer.current);
     };
-  }, []);
+  }, [refreshProfile]);
 
   const selectedRequirement =
     allRequirements.find((requirement) => requirement.id === selectedId) ??
@@ -128,11 +182,62 @@ function App() {
   };
 
   const handleNav = (label: string) => {
-    if (label === "匹配审阅") {
+    if (label === "资料库" || label === "匹配审阅") {
       setActiveNav(label);
       return;
     }
     showNotice(`${label}将在后续垂直切片中接入本地业务数据`);
+  };
+
+  const handleProfileImport = async () => {
+    setIsImportingProfile(true);
+    setProfileFeedback(null);
+    try {
+      const result = await ProfileService.ImportMarkdown();
+      if (result.cancelled) {
+        setProfileFeedback({
+          tone: "info",
+          text: "已取消导入，资料库没有发生变化。",
+        });
+        return;
+      }
+      if (result.duplicate) {
+        setProfileFeedback({
+          tone: "warning",
+          text:
+            result.warnings[0] ?? "相同内容已导入，未创建重复资料。",
+        });
+        return;
+      }
+
+      await refreshProfile();
+      setProfileFeedback({
+        tone: result.warnings.length > 0 ? "warning" : "success",
+        text:
+          result.warnings.length > 0
+            ? `已导入 ${result.document.originalName}，生成 ${result.evidenceCount} 条 Evidence；另有 ${result.warnings.length} 条解析提示。`
+            : `已导入 ${result.document.originalName}，生成 ${result.evidenceCount} 条可追溯 Evidence。`,
+      });
+    } catch (error) {
+      setProfileFeedback({
+        tone: "error",
+        text:
+          error instanceof Error
+            ? `导入失败：${error.message}`
+            : "导入失败，请重试。",
+      });
+    } finally {
+      setIsImportingProfile(false);
+    }
+  };
+
+  const handleSelectProfileEvidence = (evidence: EvidenceSummary) => {
+    setSelectedProfileEvidenceId(evidence.id);
+    setSelectedProfileSourceId(evidence.sources[0]?.chunkId ?? "");
+  };
+
+  const handleSelectProfileSource = (source: EvidenceSourceSummary) => {
+    setSelectedProfileSourceId(source.chunkId);
   };
 
   const toggleGroup = (groupId: string) => {
@@ -234,7 +339,7 @@ function App() {
               </span>
               <span>
                 <strong>黎智林</strong>
-                <small>/ 主资料库</small>
+                <small>/ {profileOverview?.name ?? "主资料库"}</small>
               </span>
               <IconChevronDown aria-hidden="true" size={17} stroke={1.6} />
             </button>
@@ -266,7 +371,8 @@ function App() {
 
           <div className="analysis-state" aria-live="polite">
             <span className="analysis-icon">
-              {isAnalysing ? (
+              {isAnalysing ||
+              (activeNav === "资料库" && profileStatus === "loading") ? (
                 <IconRefresh
                   aria-hidden="true"
                   className="is-spinning"
@@ -278,37 +384,96 @@ function App() {
               )}
             </span>
             <span>
-              <strong>{isAnalysing ? "分析中" : "分析完成"}</strong>
-              <small>{isAnalysing ? "正在重建证据关联" : "19 个要求已分析"}</small>
+              {activeNav === "资料库" ? (
+                <>
+                  <strong>
+                    {profileStatus === "loading" ? "读取资料" : "资料已同步"}
+                  </strong>
+                  <small>
+                    {profileStatus === "loading"
+                      ? "正在读取本地数据库"
+                      : `${profileOverview?.documents.length ?? 0} 个文档 · ${
+                          profileOverview?.evidence.length ?? 0
+                        } 条证据`}
+                  </small>
+                </>
+              ) : (
+                <>
+                  <strong>{isAnalysing ? "分析中" : "分析完成"}</strong>
+                  <small>
+                    {isAnalysing ? "正在重建证据关联" : "19 个要求已分析"}
+                  </small>
+                </>
+              )}
             </span>
           </div>
 
           <div className="topbar-actions">
-            <button
-              className="button button--secondary"
-              disabled={isAnalysing}
-              onClick={handleAnalyse}
-              type="button"
-            >
-              <IconRefresh aria-hidden="true" size={18} stroke={1.65} />
-              重新分析
-            </button>
-            <button
-              className="button button--primary"
-              onClick={() => setGenerateOpen(true)}
-              type="button"
-            >
-              <IconFileDescription
-                aria-hidden="true"
-                size={19}
-                stroke={1.65}
-              />
-              生成简历
-            </button>
+            {activeNav === "资料库" ? (
+              <>
+                <button
+                  className="button button--secondary"
+                  disabled={profileStatus === "loading" || isImportingProfile}
+                  onClick={() => void refreshProfile()}
+                  type="button"
+                >
+                  <IconRefresh aria-hidden="true" size={18} stroke={1.65} />
+                  刷新资料
+                </button>
+                <button
+                  className="button button--primary"
+                  disabled={isImportingProfile}
+                  onClick={() => void handleProfileImport()}
+                  type="button"
+                >
+                  <IconUpload aria-hidden="true" size={18} stroke={1.65} />
+                  {isImportingProfile ? "正在导入" : "导入 Markdown"}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="button button--secondary"
+                  disabled={isAnalysing}
+                  onClick={handleAnalyse}
+                  type="button"
+                >
+                  <IconRefresh aria-hidden="true" size={18} stroke={1.65} />
+                  重新分析
+                </button>
+                <button
+                  className="button button--primary"
+                  onClick={() => setGenerateOpen(true)}
+                  type="button"
+                >
+                  <IconFileDescription
+                    aria-hidden="true"
+                    size={19}
+                    stroke={1.65}
+                  />
+                  生成简历
+                </button>
+              </>
+            )}
           </div>
         </header>
 
-        <div className="review-layout">
+        {activeNav === "资料库" ? (
+          <ProfileLibrary
+            error={profileError}
+            feedback={profileFeedback}
+            isImporting={isImportingProfile}
+            onImport={() => void handleProfileImport()}
+            onRefresh={() => void refreshProfile()}
+            onSelectEvidence={handleSelectProfileEvidence}
+            onSelectSource={handleSelectProfileSource}
+            overview={profileOverview}
+            selectedEvidenceId={selectedProfileEvidenceId}
+            selectedSourceId={selectedProfileSourceId}
+            status={profileStatus}
+          />
+        ) : (
+          <div className="review-layout">
           <main className="match-review">
             <section className="review-heading">
               <div>
@@ -619,7 +784,8 @@ function App() {
               </>
             )}
           </aside>
-        </div>
+          </div>
+        )}
       </section>
 
       {notice && (
