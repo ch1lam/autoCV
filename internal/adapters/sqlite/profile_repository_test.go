@@ -77,6 +77,15 @@ func TestProfileRepositorySavesImportedDocumentAtomically(t *testing.T) {
 	if len(evidence) != 1 {
 		t.Fatalf("expected one evidence item, got %d", len(evidence))
 	}
+	if len(evidence[0].Sources) != 1 {
+		t.Fatalf("expected one evidence source, got %d", len(evidence[0].Sources))
+	}
+	if evidence[0].Sources[0].DocumentID != imported.Document.ID {
+		t.Fatalf("expected evidence source document id")
+	}
+	if evidence[0].Sources[0].LocatorJSON != imported.Chunks[0].LocatorJSON {
+		t.Fatalf("expected evidence source locator")
+	}
 }
 
 func TestProfileRepositoryRejectsDuplicateContentHash(t *testing.T) {

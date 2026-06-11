@@ -40,11 +40,15 @@ type Evidence struct {
 	UserVerified bool
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	Sources      []EvidenceSource
 }
 
 type EvidenceSource struct {
-	EvidenceID string
-	ChunkID    string
-	QuoteStart int
-	QuoteEnd   int
+	EvidenceID  string
+	ChunkID     string
+	DocumentID  string
+	ChunkText   string
+	LocatorJSON string
+	QuoteStart  int
+	QuoteEnd    int
 }
