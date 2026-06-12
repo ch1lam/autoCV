@@ -2,51 +2,91 @@ import {
     IconArchive,
     IconCheck,
     IconChevronDown,
-    IconChevronRight,
-    IconChevronUp,
-    IconCopy,
-    IconDatabase,
     IconEdit,
     IconFileDescription,
     IconFileText,
     IconFileTypePdf,
-    IconInfoCircle,
-    IconPointFilled,
     IconRefresh,
     IconSettings,
     IconTargetArrow,
     IconUpload,
     IconX,
 } from "@tabler/icons-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
     HealthService,
     JDService,
+    MatchService,
+    PDFService,
     ProfileService,
+    ProviderControlService,
+    ResumeService,
+    SettingsService,
     type EvidenceSourceSummary,
     type EvidenceSummary,
     type JDWorkspace as JDWorkspaceModel,
+    type MatchReview,
+    type PDFWorkspace,
     type ProfileOverview,
+    type ProviderSettings,
+    type ResumeBlockSummary,
+    type ResumeWorkspace,
 } from "../bindings/github.com/ch1lam/autocv/internal/app";
 import JDWorkspace, {
     type JDWorkspaceFeedback,
     type JDWorkspaceStatus,
 } from "./JDWorkspace";
-import {
-    allRequirements,
-    requirementGroups,
-    type MatchStatus,
-    type Requirement,
-} from "./mockData";
+import MatchReviewWorkspace, {
+    type MatchWorkspaceStatus,
+} from "./MatchReviewWorkspace";
 import ProfileLibrary, {
     type ProfileFeedback,
     type ProfileStatus,
 } from "./ProfileLibrary";
+import PDFPreview, {
+    type PDFPreviewFeedback,
+    type PDFPreviewStatus,
+} from "./PDFPreview";
+import ResumeStudio, {
+    type ResumeStudioFeedback,
+    type ResumeStudioStatus,
+} from "./ResumeStudio";
+import SettingsWorkspace, {
+    type SettingsFeedback,
+    type SettingsWorkspaceStatus,
+} from "./SettingsWorkspace";
 
 type HealthState = "checking" | "ready" | "preview";
-type Filter = "all" | MatchStatus;
-type SortMode = "importance" | "status" | "evidence";
+type ProviderRequestAction = "profile" | "jd" | "match";
+
+const providerRequestDetails: Record<
+  ProviderRequestAction,
+  { kicker: string; title: string; items: string[] }
+> = {
+  profile: {
+    kicker: "PROFILE EXTRACTION",
+    title: "提取 Markdown 中的可追溯 Evidence",
+    items: ["按标题切分的 Source Chunk", "Chunk ID 与本地来源定位信息"],
+  },
+  jd: {
+    kicker: "JD ANALYSIS",
+    title: "把岗位原文转换为结构化要求",
+    items: ["当前 JD 原文", "语言提示与任务指令"],
+  },
+  match: {
+    kicker: "MATCH SUGGESTION",
+    title: "关联 Requirement 与已有 Evidence",
+    items: ["结构化 Requirement", "相关 Evidence 内容与来源 ID"],
+  },
+};
+
+function isProviderCancellation(error: unknown) {
+  return (
+    error instanceof Error &&
+    /context canceled|context cancelled|request cancelled/i.test(error.message)
+  );
+}
 
 const navItems = [
   { label: "资料库", icon: IconArchive },
@@ -56,41 +96,54 @@ const navItems = [
   { label: "PDF 预览", icon: IconFileTypePdf },
 ];
 
-const statusMeta: Record<
-  MatchStatus,
-  { label: string; className: string; rank: number }
-> = {
-  strong: { label: "强匹配", className: "strong", rank: 0 },
-  partial: { label: "部分匹配", className: "partial", rank: 1 },
-  missing: { label: "缺失", className: "missing", rank: 2 },
-};
-
-const statusCounts = allRequirements.reduce(
-  (counts, requirement) => {
-    counts[requirement.status] += 1;
-    return counts;
-  },
-  { strong: 0, partial: 0, missing: 0 },
-);
-
 function App() {
   const [health, setHealth] = useState<HealthState>("checking");
   const [activeNav, setActiveNav] = useState("匹配审阅");
-  const [selectedId, setSelectedId] = useState("go-concurrency");
-  const [filter, setFilter] = useState<Filter>("all");
-  const [sortMode, setSortMode] = useState<SortMode>("importance");
-  const [sortOpen, setSortOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [inspectorOpen, setInspectorOpen] = useState(true);
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
-    new Set(["technical"]),
-  );
-  const [expandedSources, setExpandedSources] = useState<Set<string>>(
-    new Set(["source-backend"]),
-  );
-  const [isAnalysing, setIsAnalysing] = useState(false);
+  const [matchReview, setMatchReview] = useState<MatchReview | null>(null);
+  const [matchStatus, setMatchStatus] =
+    useState<MatchWorkspaceStatus>("loading");
+  const [matchError, setMatchError] = useState("");
+  const [isAnalyzingMatch, setIsAnalyzingMatch] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [generationLanguage, setGenerationLanguage] = useState("zh");
+  const [generationPackaging, setGenerationPackaging] = useState(0.5);
+  const [resumeWorkspace, setResumeWorkspace] =
+    useState<ResumeWorkspace | null>(null);
+  const [resumeStatus, setResumeStatus] =
+    useState<ResumeStudioStatus>("loading");
+  const [resumeError, setResumeError] = useState("");
+  const [resumeMarkdown, setResumeMarkdown] = useState("");
+  const [resumeDirty, setResumeDirty] = useState(false);
+  const [resumeFeedback, setResumeFeedback] =
+    useState<ResumeStudioFeedback | null>(null);
+  const [isGeneratingResume, setIsGeneratingResume] = useState(false);
+  const [isSavingResume, setIsSavingResume] = useState(false);
+  const [isLockingResume, setIsLockingResume] = useState(false);
+  const [pdfWorkspace, setPDFWorkspace] = useState<PDFWorkspace | null>(null);
+  const [pdfStatus, setPDFStatus] =
+    useState<PDFPreviewStatus>("loading");
+  const [pdfError, setPDFError] = useState("");
+  const [pdfFeedback, setPDFFeedback] =
+    useState<PDFPreviewFeedback | null>(null);
+  const [isRenderingPDF, setIsRenderingPDF] = useState(false);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [providerSettings, setProviderSettings] =
+    useState<ProviderSettings | null>(null);
+  const [settingsStatus, setSettingsStatus] =
+    useState<SettingsWorkspaceStatus>("loading");
+  const [settingsError, setSettingsError] = useState("");
+  const [settingsProvider, setSettingsProvider] = useState("fake");
+  const [settingsBaseURL, setSettingsBaseURL] = useState("");
+  const [settingsModel, setSettingsModel] = useState("fixture-v1");
+  const [settingsAPIKey, setSettingsAPIKey] = useState("");
+  const [settingsDirty, setSettingsDirty] = useState(false);
+  const [settingsFeedback, setSettingsFeedback] =
+    useState<SettingsFeedback | null>(null);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isCancellingProvider, setIsCancellingProvider] = useState(false);
+  const [providerRequestAction, setProviderRequestAction] =
+    useState<ProviderRequestAction | null>(null);
   const [notice, setNotice] = useState("");
   const [profileOverview, setProfileOverview] =
     useState<ProfileOverview | null>(null);
@@ -113,7 +166,6 @@ function App() {
   const [selectedProfileEvidenceId, setSelectedProfileEvidenceId] =
     useState("");
   const [selectedProfileSourceId, setSelectedProfileSourceId] = useState("");
-  const analyseTimer = useRef<number>();
   const noticeTimer = useRef<number>();
 
   const refreshProfile = useCallback(async () => {
@@ -169,50 +221,105 @@ function App() {
     }
   }, [applyJDWorkspace]);
 
+  const refreshMatch = useCallback(async () => {
+    setMatchStatus("loading");
+    setMatchError("");
+    try {
+      const review = await MatchService.GetReview();
+      setMatchReview(review);
+      setMatchStatus("ready");
+    } catch (error) {
+      setMatchStatus("error");
+      setMatchError(
+        error instanceof Error ? error.message : "本地匹配服务暂不可用。",
+      );
+    }
+  }, []);
+
+  const applyResumeWorkspace = useCallback((workspace: ResumeWorkspace) => {
+    setResumeWorkspace(workspace);
+    setResumeMarkdown(workspace.markdown);
+    setResumeDirty(false);
+    setResumeStatus("ready");
+    setResumeError("");
+  }, []);
+
+  const refreshResume = useCallback(async () => {
+    setResumeStatus("loading");
+    setResumeError("");
+    try {
+      const workspace = await ResumeService.GetWorkspace();
+      applyResumeWorkspace(workspace);
+    } catch (error) {
+      setResumeStatus("error");
+      setResumeError(
+        error instanceof Error ? error.message : "本地简历服务暂不可用。",
+      );
+    }
+  }, [applyResumeWorkspace]);
+
+  const refreshPDF = useCallback(async () => {
+    setPDFStatus("loading");
+    setPDFError("");
+    try {
+      const workspace = await PDFService.GetWorkspace();
+      setPDFWorkspace(workspace);
+      setPDFStatus("ready");
+    } catch (error) {
+      setPDFStatus("error");
+      setPDFError(
+        error instanceof Error ? error.message : "本地 PDF 服务暂不可用。",
+      );
+    }
+  }, []);
+
+  const applyProviderSettings = useCallback((settings: ProviderSettings) => {
+    setProviderSettings(settings);
+    setSettingsProvider(settings.provider);
+    setSettingsBaseURL(settings.baseUrl);
+    setSettingsModel(settings.model);
+    setSettingsAPIKey("");
+    setSettingsDirty(false);
+    setSettingsStatus("ready");
+    setSettingsError("");
+  }, []);
+
+  const refreshSettings = useCallback(async () => {
+    setSettingsStatus("loading");
+    setSettingsError("");
+    try {
+      const settings = await SettingsService.GetSettings();
+      applyProviderSettings(settings);
+    } catch (error) {
+      setSettingsStatus("error");
+      setSettingsError(
+        error instanceof Error ? error.message : "本地设置服务暂不可用。",
+      );
+    }
+  }, [applyProviderSettings]);
+
   useEffect(() => {
     HealthService.Check()
       .then((status) => setHealth(status.status === "ready" ? "ready" : "preview"))
       .catch(() => setHealth("preview"));
     void refreshProfile();
     void refreshJD();
+    void refreshMatch();
+    void refreshResume();
+    void refreshPDF();
+    void refreshSettings();
 
     return () => {
-      window.clearTimeout(analyseTimer.current);
       window.clearTimeout(noticeTimer.current);
     };
-  }, [refreshJD, refreshProfile]);
-
-  const selectedRequirement =
-    allRequirements.find((requirement) => requirement.id === selectedId) ??
-    allRequirements[0];
-
-  const visibleGroups = useMemo(() => {
-    return requirementGroups
-      .map((group) => {
-        const requirements = group.requirements
-          .filter(
-            (requirement) =>
-              filter === "all" || requirement.status === filter,
-          )
-          .slice()
-          .sort((left, right) => {
-            if (sortMode === "status") {
-              return (
-                statusMeta[left.status].rank - statusMeta[right.status].rank
-              );
-            }
-            if (sortMode === "evidence") {
-              return right.evidenceCount - left.evidenceCount;
-            }
-            return (
-              allRequirements.indexOf(left) - allRequirements.indexOf(right)
-            );
-          });
-
-        return { ...group, requirements };
-      })
-      .filter((group) => group.requirements.length > 0);
-  }, [filter, sortMode]);
+  }, [
+    refreshJD,
+    refreshMatch,
+    refreshPDF,
+    refreshProfile,
+    refreshResume,
+    refreshSettings,
+  ]);
 
   const showNotice = (message: string) => {
     setNotice(message);
@@ -224,12 +331,76 @@ function App() {
     if (
       label === "资料库" ||
       label === "JD 工作区" ||
-      label === "匹配审阅"
+      label === "匹配审阅" ||
+      label === "简历工作室" ||
+      label === "PDF 预览" ||
+      label === "设置"
     ) {
       setActiveNav(label);
       return;
     }
     showNotice(`${label}将在后续垂直切片中接入本地业务数据`);
+  };
+
+  const handleSettingsProviderChange = (provider: string) => {
+    setSettingsProvider(provider);
+    setSettingsFeedback(null);
+    setSettingsAPIKey("");
+    if (provider === "openai") {
+      setSettingsBaseURL("https://api.openai.com/v1");
+      setSettingsModel("gpt-5.5");
+    } else {
+      setSettingsBaseURL("");
+      setSettingsModel("fixture-v1");
+    }
+    setSettingsDirty(true);
+  };
+
+  const handleSettingsSave = async () => {
+    setIsSavingSettings(true);
+    setSettingsFeedback(null);
+    try {
+      const settings = await SettingsService.SaveProvider({
+        provider: settingsProvider,
+        baseUrl: settingsBaseURL,
+        model: settingsModel,
+        apiKey: settingsAPIKey,
+      });
+      applyProviderSettings(settings);
+      setSettingsFeedback({
+        tone: "success",
+        text:
+          settings.provider === "openai"
+            ? "OpenAI 配置与 Keychain 引用已保存。"
+            : "已切换到离线 Fake Provider。",
+      });
+    } catch (error) {
+      setSettingsFeedback({
+        tone: "error",
+        text:
+          error instanceof Error
+            ? `保存失败：${error.message}`
+            : "Provider 配置保存失败。",
+      });
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
+  const handleProviderCancel = async () => {
+    setIsCancellingProvider(true);
+    try {
+      const result = await ProviderControlService.CancelActive();
+      showNotice(result.message);
+    } catch (error) {
+      showNotice(
+        error instanceof Error
+          ? `取消失败：${error.message}`
+          : "取消请求失败，请重试。",
+      );
+    } finally {
+      setIsCancellingProvider(false);
+    }
   };
 
   const handleProfileImport = async () => {
@@ -254,6 +425,9 @@ function App() {
       }
 
       await refreshProfile();
+      await refreshMatch();
+      await refreshResume();
+      await refreshPDF();
       setProfileFeedback({
         tone: result.warnings.length > 0 ? "warning" : "success",
         text:
@@ -262,10 +436,12 @@ function App() {
             : `已导入 ${result.document.originalName}，生成 ${result.evidenceCount} 条可追溯 Evidence。`,
       });
     } catch (error) {
+      const cancelled = isProviderCancellation(error);
       setProfileFeedback({
-        tone: "error",
-        text:
-          error instanceof Error
+        tone: cancelled ? "info" : "error",
+        text: cancelled
+          ? "已取消 Evidence 提取，资料库没有写入半成品，可以重新导入。"
+          : error instanceof Error
             ? `导入失败：${error.message}`
             : "导入失败，请重试。",
       });
@@ -303,6 +479,9 @@ function App() {
     try {
       const workspace = await JDService.SaveDraft(jdText);
       applyJDWorkspace(workspace);
+      await refreshMatch();
+      await refreshResume();
+      await refreshPDF();
       setJDFeedback({
         tone: "success",
         text: "原始 JD 已保存；旧分析结果已失效。",
@@ -334,15 +513,20 @@ function App() {
     try {
       const workspace = await JDService.Analyze(jdText);
       applyJDWorkspace(workspace);
+      await refreshMatch();
+      await refreshResume();
+      await refreshPDF();
       setJDFeedback({
         tone: "success",
         text: "JD 分析完成，结构化结果已通过 Go 侧校验。",
       });
     } catch (error) {
+      const cancelled = isProviderCancellation(error);
       setJDFeedback({
-        tone: "error",
-        text:
-          error instanceof Error
+        tone: cancelled ? "info" : "error",
+        text: cancelled
+          ? "已取消 JD 分析，原文仍保留，可以直接重试。"
+          : error instanceof Error
             ? `分析失败：${error.message}`
             : "分析失败，请修改 JD 后重试。",
       });
@@ -352,68 +536,236 @@ function App() {
       } catch {
         setJDStatus("error");
       }
+      await refreshMatch();
     } finally {
       setIsAnalyzingJD(false);
     }
   };
 
-  const toggleGroup = (groupId: string) => {
-    setExpandedGroups((current) => {
-      const next = new Set(current);
-      if (next.has(groupId)) {
-        next.delete(groupId);
-      } else {
-        next.add(groupId);
+  const handleMatchAnalyze = async () => {
+    setIsAnalyzingMatch(true);
+    setMatchError("");
+    try {
+      const review = await MatchService.Analyze();
+      setMatchReview(review);
+      setMatchStatus("ready");
+      if (review.status === "ready") {
+        showNotice(
+          `匹配已更新，${review.requirements.length} 项要求已完成确定性评分`,
+        );
       }
-      return next;
-    });
-  };
-
-  const selectRequirement = (requirement: Requirement) => {
-    setSelectedId(requirement.id);
-    setInspectorOpen(true);
-    setExpandedSources(
-      new Set(requirement.sources[0] ? [requirement.sources[0].id] : []),
-    );
-    setCopied(false);
-  };
-
-  const toggleSource = (sourceId: string) => {
-    setExpandedSources((current) => {
-      const next = new Set(current);
-      if (next.has(sourceId)) {
-        next.delete(sourceId);
-      } else {
-        next.add(sourceId);
+      await refreshResume();
+      await refreshPDF();
+    } catch (error) {
+      const cancelled = isProviderCancellation(error);
+      setMatchStatus(cancelled ? "ready" : "error");
+      setMatchError(
+        cancelled
+          ? ""
+          : error instanceof Error
+            ? error.message
+            : "匹配分析失败，请重试。",
+      );
+      if (cancelled) {
+        showNotice("已取消匹配分析，已有结果保持不变，可以直接重试");
       }
-      return next;
-    });
+      try {
+        const review = await MatchService.GetReview();
+        setMatchReview(review);
+        setMatchStatus("ready");
+      } catch {
+        setMatchStatus("error");
+      }
+    } finally {
+      setIsAnalyzingMatch(false);
+    }
   };
 
-  const handleAnalyse = () => {
-    setIsAnalysing(true);
-    window.clearTimeout(analyseTimer.current);
-    analyseTimer.current = window.setTimeout(() => {
-      setIsAnalysing(false);
-      showNotice("分析已更新，19 项要求的证据关联保持有效");
-    }, 1100);
+  const handleResumeMarkdownChange = (value: string) => {
+    setResumeMarkdown(value);
+    setResumeDirty(value !== (resumeWorkspace?.markdown ?? ""));
+    setResumeFeedback(null);
   };
 
-  const handleCopy = async () => {
-    const source = selectedRequirement.sources[0];
-    if (!source) {
+  const handleResumeGenerate = async () => {
+    setIsGeneratingResume(true);
+    setResumeFeedback(null);
+    try {
+      const workspace = await ResumeService.Generate(
+        generationLanguage,
+        generationPackaging,
+      );
+      applyResumeWorkspace(workspace);
+      await refreshPDF();
+      setGenerateOpen(false);
+      setActiveNav("简历工作室");
+      setResumeFeedback({
+        tone: "success",
+        text: `第 ${workspace.version} 版已生成，Block 与来源关系已保存。`,
+      });
+    } catch (error) {
+      const cancelled = isProviderCancellation(error);
+      setResumeFeedback({
+        tone: cancelled ? "info" : "error",
+        text: cancelled
+          ? "已取消简历生成，上一版本保持不变，可以直接重试。"
+          : error instanceof Error
+            ? `生成失败：${error.message}`
+            : "生成失败，请检查匹配结果后重试。",
+      });
+    } finally {
+      setIsGeneratingResume(false);
+    }
+  };
+
+  const handleResumeSave = async () => {
+    setIsSavingResume(true);
+    setResumeFeedback(null);
+    try {
+      const workspace = await ResumeService.UpdateMarkdown(resumeMarkdown);
+      applyResumeWorkspace(workspace);
+      await refreshPDF();
+      setResumeFeedback({
+        tone: "success",
+        text: `Markdown 已保存为第 ${workspace.version} 版。`,
+      });
+    } catch (error) {
+      setResumeFeedback({
+        tone: "error",
+        text:
+          error instanceof Error
+            ? `保存失败：${error.message}`
+            : "保存失败，请检查 Block 标记。",
+      });
+    } finally {
+      setIsSavingResume(false);
+    }
+  };
+
+  const handleResumeLock = async (block: ResumeBlockSummary) => {
+    setIsLockingResume(true);
+    setResumeFeedback(null);
+    try {
+      const workspace = await ResumeService.SetBlockLocked(
+        block.id,
+        !block.locked,
+      );
+      applyResumeWorkspace(workspace);
+      await refreshPDF();
+      setResumeFeedback({
+        tone: "success",
+        text: block.locked
+          ? `已解除“${block.label}”锁定。`
+          : `已锁定“${block.label}”，重新生成不会改写该内容。`,
+      });
+    } catch (error) {
+      setResumeFeedback({
+        tone: "error",
+        text:
+          error instanceof Error
+            ? `锁定失败：${error.message}`
+            : "锁定状态保存失败。",
+      });
+    } finally {
+      setIsLockingResume(false);
+    }
+  };
+
+  const handlePDFRender = async () => {
+    setIsRenderingPDF(true);
+    setPDFFeedback(null);
+    try {
+      const workspace = await PDFService.Render();
+      setPDFWorkspace(workspace);
+      setPDFStatus("ready");
+      setPDFError("");
+      setPDFFeedback({
+        tone: "success",
+        text: `Resume v${workspace.version} 已生成新的 PDF Artifact。`,
+      });
+    } catch (error) {
+      setPDFFeedback({
+        tone: "error",
+        text:
+          error instanceof Error
+            ? `渲染失败：${error.message}`
+            : "渲染失败，上一份成功 PDF 已保留。",
+      });
+    } finally {
+      setIsRenderingPDF(false);
+    }
+  };
+
+  const handlePDFExport = async () => {
+    setIsExportingPDF(true);
+    setPDFFeedback(null);
+    try {
+      const result = await PDFService.ExportPDF();
+      setPDFFeedback({
+        tone: "success",
+        text: result.cancelled
+          ? "已取消导出，Artifact 没有变化。"
+          : `PDF 已导出到 ${result.path}`,
+      });
+    } catch (error) {
+      setPDFFeedback({
+        tone: "error",
+        text:
+          error instanceof Error ? `导出失败：${error.message}` : "导出失败。",
+      });
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
+
+  const handleMarkdownExport = async () => {
+    setIsExportingPDF(true);
+    setPDFFeedback(null);
+    try {
+      const result = await PDFService.ExportMarkdown();
+      setPDFFeedback({
+        tone: "success",
+        text: result.cancelled
+          ? "已取消导出。"
+          : `Markdown 已导出到 ${result.path}`,
+      });
+    } catch (error) {
+      setPDFFeedback({
+        tone: "error",
+        text:
+          error instanceof Error ? `导出失败：${error.message}` : "导出失败。",
+      });
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
+
+  const executeProviderAction = (action: ProviderRequestAction) => {
+    if (action === "profile") {
+      void handleProfileImport();
+    } else if (action === "jd") {
+      void handleJDAnalyze();
+    } else {
+      void handleMatchAnalyze();
+    }
+  };
+
+  const requestProviderAction = (action: ProviderRequestAction) => {
+    if (providerSettings?.provider === "openai") {
+      setProviderRequestAction(action);
       return;
     }
-    await navigator.clipboard.writeText(source.excerpt.join("\n"));
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
+    executeProviderAction(action);
   };
 
-  const sortLabel = {
-    importance: "按重要性",
-    status: "按匹配状态",
-    evidence: "按证据数量",
-  }[sortMode];
+  const confirmProviderAction = () => {
+    if (!providerRequestAction) {
+      return;
+    }
+    const action = providerRequestAction;
+    setProviderRequestAction(null);
+    executeProviderAction(action);
+  };
 
   return (
     <div className="app-shell" data-health={health}>
@@ -422,6 +774,7 @@ function App() {
         <nav className="primary-nav" aria-label="主要导航">
           {navItems.map(({ label, icon: Icon }) => (
             <button
+              aria-label={label}
               className={`nav-item ${activeNav === label ? "is-active" : ""}`}
               key={label}
               onClick={() => handleNav(label)}
@@ -433,7 +786,10 @@ function App() {
           ))}
         </nav>
         <button
-          className="nav-item nav-item--settings"
+          aria-label="设置"
+          className={`nav-item nav-item--settings ${
+            activeNav === "设置" ? "is-active" : ""
+          }`}
           onClick={() => handleNav("设置")}
           type="button"
         >
@@ -488,9 +844,21 @@ function App() {
 
           <div className="analysis-state" aria-live="polite">
             <span className="analysis-icon">
-              {isAnalysing ||
+              {(activeNav === "匹配审阅" &&
+                (isAnalyzingMatch || matchStatus === "loading")) ||
               (activeNav === "JD 工作区" && isAnalyzingJD) ||
-              (activeNav === "资料库" && profileStatus === "loading") ? (
+              (activeNav === "资料库" && profileStatus === "loading") ||
+              (activeNav === "简历工作室" &&
+                (resumeStatus === "loading" ||
+                  isGeneratingResume ||
+                  isSavingResume ||
+                  isLockingResume)) ||
+              (activeNav === "PDF 预览" &&
+                (pdfStatus === "loading" ||
+                  isRenderingPDF ||
+                  isExportingPDF)) ||
+              (activeNav === "设置" &&
+                (settingsStatus === "loading" || isSavingSettings)) ? (
                 <IconRefresh
                   aria-hidden="true"
                   className="is-spinning"
@@ -536,11 +904,82 @@ function App() {
                           : "粘贴岗位描述开始"}
                   </small>
                 </>
+              ) : activeNav === "简历工作室" ? (
+                <>
+                  <strong>
+                    {isGeneratingResume
+                      ? "生成中"
+                      : isSavingResume
+                        ? "保存中"
+                        : resumeDirty
+                          ? "有未保存修改"
+                          : resumeWorkspace?.status === "ready"
+                            ? `第 ${resumeWorkspace.version} 版`
+                            : "等待生成"}
+                  </strong>
+                  <small>
+                    {resumeWorkspace?.status === "ready"
+                      ? `${resumeWorkspace.blocks.length} 个 Block · ${resumeWorkspace.packagingLabel}包装`
+                      : resumeWorkspace?.message || "先完成匹配审阅"}
+                  </small>
+                </>
+              ) : activeNav === "PDF 预览" ? (
+                <>
+                  <strong>
+                    {isRenderingPDF
+                      ? "渲染中"
+                      : isExportingPDF
+                        ? "导出中"
+                        : pdfWorkspace?.status === "ready"
+                          ? "PDF 已就绪"
+                          : pdfWorkspace?.status === "stale"
+                            ? "需要重新渲染"
+                            : "等待渲染"}
+                  </strong>
+                  <small>
+                    {pdfWorkspace?.artifactId
+                      ? `Artifact ${pdfWorkspace.artifactId.slice(0, 8)} · Resume v${pdfWorkspace.version}`
+                      : pdfWorkspace?.message || "先完成简历版本"}
+                  </small>
+                </>
+              ) : activeNav === "设置" ? (
+                <>
+                  <strong>
+                    {isSavingSettings
+                      ? "保存中"
+                      : settingsDirty
+                        ? "有未保存修改"
+                        : providerSettings?.provider === "openai"
+                          ? "OpenAI 已配置"
+                          : "离线模式"}
+                  </strong>
+                  <small>
+                    {settingsProvider === "openai"
+                      ? `${settingsModel || "未选择模型"} · ${
+                          providerSettings?.apiKeyConfigured
+                            ? "Keychain 已就绪"
+                            : "需要 API Key"
+                        }`
+                      : "Fake Provider · 固定 Fixture"}
+                  </small>
+                </>
               ) : (
                 <>
-                  <strong>{isAnalysing ? "分析中" : "分析完成"}</strong>
+                  <strong>
+                    {isAnalyzingMatch
+                      ? "匹配中"
+                      : matchReview?.status === "ready"
+                        ? "评分完成"
+                        : matchReview?.status === "stale"
+                          ? "结果已失效"
+                          : "等待匹配"}
+                  </strong>
                   <small>
-                    {isAnalysing ? "正在重建证据关联" : "19 个要求已分析"}
+                    {isAnalyzingMatch
+                      ? "正在重建 Evidence 关联"
+                      : matchReview?.status === "ready"
+                        ? `${matchReview.requirements.length} 项要求 · ${matchReview.totalScore} 分`
+                        : matchReview?.message || "准备资料与 JD"}
                   </small>
                 </>
               )}
@@ -550,19 +989,32 @@ function App() {
           <div className="topbar-actions">
             {activeNav === "资料库" ? (
               <>
-                <button
-                  className="button button--secondary"
-                  disabled={profileStatus === "loading" || isImportingProfile}
-                  onClick={() => void refreshProfile()}
-                  type="button"
-                >
-                  <IconRefresh aria-hidden="true" size={18} stroke={1.65} />
-                  刷新资料
-                </button>
+                {isImportingProfile &&
+                providerSettings?.provider === "openai" ? (
+                  <button
+                    className="button button--secondary button--cancel"
+                    disabled={isCancellingProvider}
+                    onClick={() => void handleProviderCancel()}
+                    type="button"
+                  >
+                    <IconX aria-hidden="true" size={18} stroke={1.65} />
+                    {isCancellingProvider ? "正在取消" : "取消请求"}
+                  </button>
+                ) : (
+                  <button
+                    className="button button--secondary"
+                    disabled={profileStatus === "loading"}
+                    onClick={() => void refreshProfile()}
+                    type="button"
+                  >
+                    <IconRefresh aria-hidden="true" size={18} stroke={1.65} />
+                    刷新资料
+                  </button>
+                )}
                 <button
                   className="button button--primary"
                   disabled={isImportingProfile}
-                  onClick={() => void handleProfileImport()}
+                  onClick={() => requestProviderAction("profile")}
                   type="button"
                 >
                   <IconUpload aria-hidden="true" size={18} stroke={1.65} />
@@ -571,25 +1023,35 @@ function App() {
               </>
             ) : activeNav === "JD 工作区" ? (
               <>
-                <button
-                  className="button button--secondary"
-                  disabled={
-                    !jdDirty ||
-                    isSavingJD ||
-                    isAnalyzingJD ||
-                    jdText.trim() === ""
-                  }
-                  onClick={() => void handleJDSave()}
-                  type="button"
-                >
-                  {isSavingJD ? "正在保存" : "保存原文"}
-                </button>
+                {isAnalyzingJD &&
+                providerSettings?.provider === "openai" ? (
+                  <button
+                    className="button button--secondary button--cancel"
+                    disabled={isCancellingProvider}
+                    onClick={() => void handleProviderCancel()}
+                    type="button"
+                  >
+                    <IconX aria-hidden="true" size={18} stroke={1.65} />
+                    {isCancellingProvider ? "正在取消" : "取消请求"}
+                  </button>
+                ) : (
+                  <button
+                    className="button button--secondary"
+                    disabled={
+                      !jdDirty || isSavingJD || jdText.trim() === ""
+                    }
+                    onClick={() => void handleJDSave()}
+                    type="button"
+                  >
+                    {isSavingJD ? "正在保存" : "保存原文"}
+                  </button>
+                )}
                 <button
                   className="button button--primary"
                   disabled={
                     isSavingJD || isAnalyzingJD || jdText.trim() === ""
                   }
-                  onClick={() => void handleJDAnalyze()}
+                  onClick={() => requestProviderAction("jd")}
                   type="button"
                 >
                   <IconRefresh
@@ -601,19 +1063,126 @@ function App() {
                   {isAnalyzingJD ? "正在分析" : "分析 JD"}
                 </button>
               </>
-            ) : (
+            ) : activeNav === "简历工作室" ? (
+              <>
+                {isGeneratingResume &&
+                providerSettings?.provider === "openai" ? (
+                  <button
+                    className="button button--secondary button--cancel"
+                    disabled={isCancellingProvider}
+                    onClick={() => void handleProviderCancel()}
+                    type="button"
+                  >
+                    <IconX aria-hidden="true" size={18} stroke={1.65} />
+                    {isCancellingProvider ? "正在取消" : "取消请求"}
+                  </button>
+                ) : (
+                  <button
+                    className="button button--secondary"
+                    disabled={isSavingResume}
+                    onClick={() => setGenerateOpen(true)}
+                    type="button"
+                  >
+                    <IconRefresh
+                      aria-hidden="true"
+                      size={18}
+                      stroke={1.65}
+                    />
+                    {resumeWorkspace?.status === "ready"
+                      ? "重新生成"
+                      : "生成简历"}
+                  </button>
+                )}
+                <button
+                  className="button button--primary"
+                  disabled={!resumeDirty || isSavingResume}
+                  onClick={() => void handleResumeSave()}
+                  type="button"
+                >
+                  {isSavingResume ? "正在保存" : "保存新版本"}
+                </button>
+              </>
+            ) : activeNav === "PDF 预览" ? (
               <>
                 <button
                   className="button button--secondary"
-                  disabled={isAnalysing}
-                  onClick={handleAnalyse}
+                  disabled={isRenderingPDF || pdfStatus === "loading"}
+                  onClick={() => void handlePDFRender()}
                   type="button"
                 >
-                  <IconRefresh aria-hidden="true" size={18} stroke={1.65} />
-                  重新分析
+                  <IconRefresh
+                    aria-hidden="true"
+                    className={isRenderingPDF ? "is-spinning" : ""}
+                    size={18}
+                    stroke={1.65}
+                  />
+                  {pdfWorkspace?.artifactId ? "重新渲染" : "生成 PDF"}
                 </button>
                 <button
                   className="button button--primary"
+                  disabled={!pdfWorkspace?.canExport || isExportingPDF}
+                  onClick={() => void handlePDFExport()}
+                  type="button"
+                >
+                  <IconFileTypePdf
+                    aria-hidden="true"
+                    size={18}
+                    stroke={1.65}
+                  />
+                  {isExportingPDF ? "正在导出" : "导出 PDF"}
+                </button>
+              </>
+            ) : activeNav === "设置" ? (
+              <>
+                <button
+                  className="button button--secondary"
+                  disabled={isSavingSettings}
+                  onClick={() => void refreshSettings()}
+                  type="button"
+                >
+                  <IconRefresh aria-hidden="true" size={18} stroke={1.65} />
+                  重新读取
+                </button>
+                <button
+                  className="button button--primary"
+                  disabled={!settingsDirty || isSavingSettings}
+                  onClick={() => void handleSettingsSave()}
+                  type="button"
+                >
+                  {isSavingSettings ? "正在保存" : "保存设置"}
+                </button>
+              </>
+            ) : (
+              <>
+                {isAnalyzingMatch &&
+                providerSettings?.provider === "openai" ? (
+                  <button
+                    className="button button--secondary button--cancel"
+                    disabled={isCancellingProvider}
+                    onClick={() => void handleProviderCancel()}
+                    type="button"
+                  >
+                    <IconX aria-hidden="true" size={18} stroke={1.65} />
+                    {isCancellingProvider ? "正在取消" : "取消请求"}
+                  </button>
+                ) : (
+                  <button
+                    className="button button--secondary"
+                    disabled={matchStatus === "loading"}
+                    onClick={() => requestProviderAction("match")}
+                    type="button"
+                  >
+                    <IconRefresh
+                      aria-hidden="true"
+                      size={18}
+                      stroke={1.65}
+                    />
+                    重新匹配
+                  </button>
+                )}
+                <button
+                  className="button button--primary"
+                  disabled={matchReview?.status !== "ready"}
                   onClick={() => setGenerateOpen(true)}
                   type="button"
                 >
@@ -634,7 +1203,7 @@ function App() {
             error={profileError}
             feedback={profileFeedback}
             isImporting={isImportingProfile}
-            onImport={() => void handleProfileImport()}
+            onImport={() => requestProviderAction("profile")}
             onRefresh={() => void refreshProfile()}
             onSelectEvidence={handleSelectProfileEvidence}
             onSelectSource={handleSelectProfileSource}
@@ -650,7 +1219,7 @@ function App() {
             isAnalyzing={isAnalyzingJD}
             isDirty={jdDirty}
             isSaving={isSavingJD}
-            onAnalyze={() => void handleJDAnalyze()}
+            onAnalyze={() => requestProviderAction("jd")}
             onChange={handleJDTextChange}
             onRetry={() => void refreshJD()}
             onSave={() => void handleJDSave()}
@@ -658,319 +1227,78 @@ function App() {
             status={jdStatus}
             workspace={jdWorkspace}
           />
+        ) : activeNav === "简历工作室" ? (
+          <ResumeStudio
+            error={resumeError}
+            feedback={resumeFeedback}
+            isDirty={resumeDirty}
+            isLocking={isLockingResume}
+            isSaving={isSavingResume}
+            markdown={resumeMarkdown}
+            onChange={handleResumeMarkdownChange}
+            onGenerate={() => setGenerateOpen(true)}
+            onOpenMatch={() => setActiveNav("匹配审阅")}
+            onRetry={() => void refreshResume()}
+            onSave={() => void handleResumeSave()}
+            onToggleLock={(block) => void handleResumeLock(block)}
+            status={resumeStatus}
+            workspace={resumeWorkspace}
+          />
+        ) : activeNav === "PDF 预览" ? (
+          <PDFPreview
+            error={pdfError}
+            feedback={pdfFeedback}
+            isExporting={isExportingPDF}
+            isRendering={isRenderingPDF}
+            onExportMarkdown={() => void handleMarkdownExport()}
+            onExportPDF={() => void handlePDFExport()}
+            onOpenResume={() => setActiveNav("简历工作室")}
+            onRender={() => void handlePDFRender()}
+            onRetry={() => void refreshPDF()}
+            status={pdfStatus}
+            workspace={pdfWorkspace}
+          />
+        ) : activeNav === "设置" ? (
+          <SettingsWorkspace
+            apiKey={settingsAPIKey}
+            baseUrl={settingsBaseURL}
+            error={settingsError}
+            feedback={settingsFeedback}
+            isDirty={settingsDirty}
+            isSaving={isSavingSettings}
+            model={settingsModel}
+            onAPIKeyChange={(value) => {
+              setSettingsAPIKey(value);
+              setSettingsDirty(true);
+              setSettingsFeedback(null);
+            }}
+            onBaseURLChange={(value) => {
+              setSettingsBaseURL(value);
+              setSettingsDirty(true);
+              setSettingsFeedback(null);
+            }}
+            onModelChange={(value) => {
+              setSettingsModel(value);
+              setSettingsDirty(true);
+              setSettingsFeedback(null);
+            }}
+            onProviderChange={handleSettingsProviderChange}
+            onRetry={() => void refreshSettings()}
+            onSave={() => void handleSettingsSave()}
+            provider={settingsProvider}
+            settings={providerSettings}
+            status={settingsStatus}
+          />
         ) : (
-          <div className="review-layout">
-          <main className="match-review">
-            <section className="review-heading">
-              <div>
-                <h1>Senior Backend Engineer</h1>
-                <p>匹配审阅 · 审查岗位要求与个人证据的匹配情况</p>
-              </div>
-              <div className="score">
-                <span>综合匹配</span>
-                <strong>82</strong>
-                <small>/ 100</small>
-              </div>
-            </section>
-
-            <section className="review-controls">
-              <div className="filter-tabs" role="tablist" aria-label="匹配筛选">
-                {[
-                  { id: "all" as const, label: "全部", count: allRequirements.length },
-                  { id: "strong" as const, label: "强匹配", count: statusCounts.strong },
-                  { id: "partial" as const, label: "部分匹配", count: statusCounts.partial },
-                  { id: "missing" as const, label: "缺失", count: statusCounts.missing },
-                ].map((tab) => (
-                  <button
-                    aria-selected={filter === tab.id}
-                    className={filter === tab.id ? "is-active" : ""}
-                    key={tab.id}
-                    onClick={() => setFilter(tab.id)}
-                    role="tab"
-                    type="button"
-                  >
-                    {tab.label}
-                    <span>{tab.count}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="sort-picker">
-                <button
-                  aria-expanded={sortOpen}
-                  className="sort-trigger"
-                  onClick={() => setSortOpen((current) => !current)}
-                  type="button"
-                >
-                  {sortLabel}
-                  <IconChevronDown aria-hidden="true" size={16} stroke={1.5} />
-                </button>
-                {sortOpen && (
-                  <div className="sort-menu">
-                    {[
-                      ["importance", "按重要性"],
-                      ["status", "按匹配状态"],
-                      ["evidence", "按证据数量"],
-                    ].map(([value, label]) => (
-                      <button
-                        className={sortMode === value ? "is-selected" : ""}
-                        key={value}
-                        onClick={() => {
-                          setSortMode(value as SortMode);
-                          setSortOpen(false);
-                        }}
-                        type="button"
-                      >
-                        {sortMode === value && (
-                          <IconCheck aria-hidden="true" size={15} stroke={1.8} />
-                        )}
-                        <span>{label}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <div className="requirement-table">
-              <div className="table-head" aria-hidden="true">
-                <span>要求</span>
-                <span>匹配状态</span>
-                <span>证据数量</span>
-                <span />
-              </div>
-              <div className="table-body">
-                {visibleGroups.map((group) => {
-                  const expanded = expandedGroups.has(group.id);
-
-                  return (
-                    <section className="requirement-group" key={group.id}>
-                      <button
-                        aria-expanded={expanded}
-                        className="group-row"
-                        onClick={() => toggleGroup(group.id)}
-                        type="button"
-                      >
-                        <span className="group-label">
-                          {expanded ? (
-                            <IconChevronDown
-                              aria-hidden="true"
-                              size={18}
-                              stroke={1.65}
-                            />
-                          ) : (
-                            <IconChevronRight
-                              aria-hidden="true"
-                              size={18}
-                              stroke={1.65}
-                            />
-                          )}
-                          <strong>{group.label}</strong>
-                          <small>({group.requirements.length})</small>
-                        </span>
-                        {!expanded && (
-                          <>
-                            <span
-                              className={`status-badge status-badge--${group.summaryStatus}`}
-                            >
-                              <IconPointFilled aria-hidden="true" size={15} />
-                              {statusMeta[group.summaryStatus].label}
-                            </span>
-                            <span className="group-evidence">
-                              {group.summaryEvidenceCount}
-                            </span>
-                          </>
-                        )}
-                      </button>
-                      {expanded &&
-                        group.requirements.map((requirement) => {
-                          const selected = requirement.id === selectedRequirement.id;
-                          return (
-                            <button
-                              className={`requirement-row ${selected ? "is-selected" : ""}`}
-                              key={requirement.id}
-                              onClick={() => selectRequirement(requirement)}
-                              type="button"
-                            >
-                              <span className="requirement-text">
-                                <small>
-                                  {allRequirements.indexOf(requirement) + 1}
-                                </small>
-                                <span>{requirement.text}</span>
-                              </span>
-                              <span
-                                className={`status-badge status-badge--${requirement.status}`}
-                              >
-                                <IconPointFilled aria-hidden="true" size={15} />
-                                {statusMeta[requirement.status].label}
-                              </span>
-                              <span className="evidence-count">
-                                {requirement.evidenceCount}
-                              </span>
-                              <IconChevronRight
-                                aria-hidden="true"
-                                className="row-chevron"
-                                size={18}
-                                stroke={1.55}
-                              />
-                            </button>
-                          );
-                        })}
-                    </section>
-                  );
-                })}
-                {visibleGroups.length === 0 && (
-                  <div className="empty-filter">
-                    当前筛选没有匹配要求。
-                    <button onClick={() => setFilter("all")} type="button">
-                      查看全部
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-            <p className="review-hint">
-              <IconInfoCircle aria-hidden="true" size={17} stroke={1.6} />
-              点击要求行查看右侧的来源证据与匹配说明
-            </p>
-          </main>
-
-          <aside
-            className={`evidence-panel ${inspectorOpen ? "" : "is-closed"}`}
-            key={selectedRequirement.id}
-          >
-            <header className="evidence-header">
-              <h2>来源证据</h2>
-              <button
-                aria-label="关闭来源证据"
-                className="icon-button evidence-close"
-                onClick={() => setInspectorOpen(false)}
-                type="button"
-              >
-                <IconX aria-hidden="true" size={19} stroke={1.6} />
-              </button>
-            </header>
-
-            <section className="evidence-summary">
-              <span>对应要求</span>
-              <h3>{selectedRequirement.text}</h3>
-              <dl>
-                <div>
-                  <dt>匹配状态</dt>
-                  <dd
-                    className={`status-badge status-badge--${selectedRequirement.status}`}
-                  >
-                    <IconPointFilled aria-hidden="true" size={15} />
-                    {statusMeta[selectedRequirement.status].label}
-                  </dd>
-                </div>
-                <div>
-                  <dt>证据数量</dt>
-                  <dd>{selectedRequirement.evidenceCount}</dd>
-                </div>
-              </dl>
-            </section>
-
-            <section className="sources">
-              <h3>证据来源（{selectedRequirement.sources.length}）</h3>
-              {selectedRequirement.sources.length === 0 ? (
-                <div className="empty-source">
-                  <IconDatabase aria-hidden="true" size={24} stroke={1.5} />
-                  <strong>当前资料中没有直接证据</strong>
-                  <p>后续追问阶段会确认用户是否具备该项能力。</p>
-                </div>
-              ) : (
-                selectedRequirement.sources.map((source) => {
-                  const expanded = expandedSources.has(source.id);
-                  return (
-                    <article className="source-item" key={source.id}>
-                      <button
-                        aria-expanded={expanded}
-                        className="source-trigger"
-                        onClick={() => toggleSource(source.id)}
-                        type="button"
-                      >
-                        {expanded ? (
-                          <IconChevronUp
-                            aria-hidden="true"
-                            size={17}
-                            stroke={1.5}
-                          />
-                        ) : (
-                          <IconChevronRight
-                            aria-hidden="true"
-                            size={17}
-                            stroke={1.5}
-                          />
-                        )}
-                        <span>{source.document}</span>
-                      </button>
-                      {expanded && (
-                        <div className="source-snippets">
-                          {source.snippets.map((snippet, index) => (
-                            <button
-                              className={index === 0 ? "is-current" : ""}
-                              key={`${source.id}-${snippet.location}`}
-                              onClick={() =>
-                                showNotice(
-                                  `已定位到 ${source.document} ${snippet.location}`,
-                                )
-                              }
-                              type="button"
-                            >
-                              <IconPointFilled
-                                aria-hidden="true"
-                                size={12}
-                              />
-                              <span>{snippet.location}</span>
-                              <strong>{snippet.label}</strong>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </article>
-                  );
-                })
-              )}
-            </section>
-
-            {selectedRequirement.sources[0] && (
-              <>
-                <section className="source-content">
-                  <header>
-                    <h3>来源内容</h3>
-                    <span>
-                      来自 {selectedRequirement.sources[0].document}
-                    </span>
-                  </header>
-                  <div className="source-code">
-                    {selectedRequirement.sources[0].excerpt.map((line, index) => (
-                      <div className="source-line" key={`${line}-${index}`}>
-                        <span>{42 + index}</span>
-                        <code>{line || " "}</code>
-                      </div>
-                    ))}
-                    <button
-                      className="copy-button"
-                      onClick={handleCopy}
-                      type="button"
-                    >
-                      {copied ? (
-                        <IconCheck aria-hidden="true" size={15} stroke={1.7} />
-                      ) : (
-                        <IconCopy aria-hidden="true" size={15} stroke={1.7} />
-                      )}
-                      {copied ? "已复制" : "复制"}
-                    </button>
-                  </div>
-                </section>
-                <section className="match-explanation">
-                  <h3>匹配说明</h3>
-                  <p>{selectedRequirement.sources[0].explanation}</p>
-                </section>
-              </>
-            )}
-          </aside>
-          </div>
+          <MatchReviewWorkspace
+            error={matchError}
+            isAnalyzing={isAnalyzingMatch}
+            onAnalyze={() => requestProviderAction("match")}
+            onOpenJD={() => setActiveNav("JD 工作区")}
+            onOpenProfile={() => setActiveNav("资料库")}
+            review={matchReview}
+            status={matchStatus}
+          />
         )}
       </section>
 
@@ -997,28 +1325,99 @@ function App() {
             >
               <IconX aria-hidden="true" size={20} stroke={1.6} />
             </button>
-            <span className="dialog-kicker">下一阶段</span>
+            <span className="dialog-kicker">Resume Run</span>
             <h2 id="generate-title">基于当前匹配结果生成简历</h2>
             <p>
-              将使用平衡包装档，并保留所有来源引用。缺失要求不会被补写成事实。
+              先生成结构化 Resume，再派生 Markdown。缺失要求不会被补写成事实。
             </p>
             <dl className="dialog-summary">
               <div>
                 <dt>目标岗位</dt>
-                <dd>Senior Backend Engineer</dd>
+                <dd>{matchReview?.jdTitle || "目标岗位"}</dd>
               </div>
               <div>
                 <dt>综合匹配</dt>
-                <dd>82 / 100</dd>
+                <dd>{matchReview?.totalScore ?? 0} / 100</dd>
               </div>
               <div>
                 <dt>包装档位</dt>
-                <dd>平衡</dd>
+                <dd>
+                  {generationPackaging === 0
+                    ? "保守"
+                    : generationPackaging === 0.5
+                      ? "平衡"
+                      : "强化"}
+                </dd>
               </div>
             </dl>
+            <section
+              className="provider-request-inline"
+              aria-label="本次生成的 Provider 发送摘要"
+            >
+              <div>
+                <span>Provider</span>
+                <strong>
+                  {providerSettings?.provider === "openai"
+                    ? `OpenAI · ${providerSettings.model}`
+                    : "Fake Provider · 本地 Fixture"}
+                </strong>
+              </div>
+              <div>
+                <span>发送内容</span>
+                <strong>
+                  {providerSettings?.provider === "openai"
+                    ? "Requirement、相关 Evidence、包装参数"
+                    : "不向网络发送用户内容"}
+                </strong>
+              </div>
+            </section>
+            <fieldset className="generate-options">
+              <legend>简历语言</legend>
+              <div>
+                {[
+                  { label: "中文", value: "zh" },
+                  { label: "English", value: "en" },
+                ].map((option) => (
+                  <button
+                    aria-pressed={generationLanguage === option.value}
+                    className={
+                      generationLanguage === option.value ? "is-selected" : ""
+                    }
+                    key={option.value}
+                    onClick={() => setGenerationLanguage(option.value)}
+                    type="button"
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset className="generate-options">
+              <legend>包装强度</legend>
+              <div>
+                {[
+                  { label: "保守", value: 0 },
+                  { label: "平衡", value: 0.5 },
+                  { label: "强化", value: 1 },
+                ].map((option) => (
+                  <button
+                    aria-pressed={generationPackaging === option.value}
+                    className={
+                      generationPackaging === option.value ? "is-selected" : ""
+                    }
+                    key={option.value}
+                    onClick={() => setGenerationPackaging(option.value)}
+                    type="button"
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
             <div className="dialog-actions">
               <button
                 className="button button--secondary"
+                disabled={isGeneratingResume}
                 onClick={() => setGenerateOpen(false)}
                 type="button"
               >
@@ -1026,10 +1425,8 @@ function App() {
               </button>
               <button
                 className="button button--primary"
-                onClick={() => {
-                  setGenerateOpen(false);
-                  showNotice("生成请求已进入 Resume Studio");
-                }}
+                disabled={isGeneratingResume}
+                onClick={() => void handleResumeGenerate()}
                 type="button"
               >
                 <IconFileDescription
@@ -1037,7 +1434,72 @@ function App() {
                   size={18}
                   stroke={1.65}
                 />
-                确认生成
+                {isGeneratingResume ? "正在生成" : "确认生成"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {providerRequestAction && (
+        <div
+          aria-labelledby="provider-request-title"
+          aria-modal="true"
+          className="modal-backdrop"
+          role="dialog"
+        >
+          <section className="generate-dialog provider-request-dialog">
+            <button
+              aria-label="关闭"
+              className="icon-button modal-close"
+              onClick={() => setProviderRequestAction(null)}
+              type="button"
+            >
+              <IconX aria-hidden="true" size={20} stroke={1.6} />
+            </button>
+            <span className="dialog-kicker">
+              {providerRequestDetails[providerRequestAction].kicker}
+            </span>
+            <h2 id="provider-request-title">即将发送给 OpenAI</h2>
+            <p>{providerRequestDetails[providerRequestAction].title}</p>
+            <dl className="provider-request-meta">
+              <div>
+                <dt>Provider</dt>
+                <dd>OpenAI</dd>
+              </div>
+              <div>
+                <dt>模型</dt>
+                <dd>{providerSettings?.model || "gpt-5.5"}</dd>
+              </div>
+            </dl>
+            <section className="provider-request-content">
+              <span>本次发送的数据类型</span>
+              <ul>
+                {providerRequestDetails[providerRequestAction].items.map(
+                  (item) => (
+                    <li key={item}>
+                      <IconCheck aria-hidden="true" size={15} stroke={1.8} />
+                      {item}
+                    </li>
+                  ),
+                )}
+              </ul>
+              <small>API Key、原始文件和本地 PDF 产物不会发送。</small>
+            </section>
+            <div className="dialog-actions">
+              <button
+                className="button button--secondary"
+                onClick={() => setProviderRequestAction(null)}
+                type="button"
+              >
+                取消
+              </button>
+              <button
+                className="button button--primary"
+                onClick={confirmProviderAction}
+                type="button"
+              >
+                确认并继续
               </button>
             </div>
           </section>

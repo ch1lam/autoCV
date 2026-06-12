@@ -1,21 +1,47 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
 
 const {
+  analyzeMatchesMock,
   analyzeJDMock,
+  cancelActiveProviderMock,
+  exportMarkdownMock,
+  exportPDFMock,
+  getPDFWorkspaceMock,
   getJDWorkspaceMock,
+  getMatchReviewMock,
   getOverviewMock,
   importMarkdownMock,
+  renderPDFMock,
+  generateResumeMock,
+  getResumeWorkspaceMock,
+  getSettingsMock,
   saveJDDraftMock,
+  saveProviderMock,
+  setResumeBlockLockedMock,
+  updateResumeMarkdownMock,
 } = vi.hoisted(() => ({
+  analyzeMatchesMock: vi.fn(),
   analyzeJDMock: vi.fn(),
+  cancelActiveProviderMock: vi.fn(),
+  exportMarkdownMock: vi.fn(),
+  exportPDFMock: vi.fn(),
+  generateResumeMock: vi.fn(),
   getJDWorkspaceMock: vi.fn(),
+  getMatchReviewMock: vi.fn(),
   getOverviewMock: vi.fn(),
+  getPDFWorkspaceMock: vi.fn(),
+  getResumeWorkspaceMock: vi.fn(),
+  getSettingsMock: vi.fn(),
   importMarkdownMock: vi.fn(),
+  renderPDFMock: vi.fn(),
   saveJDDraftMock: vi.fn(),
+  saveProviderMock: vi.fn(),
+  setResumeBlockLockedMock: vi.fn(),
+  updateResumeMarkdownMock: vi.fn(),
 }));
 
 vi.mock("../bindings/github.com/ch1lam/autocv/internal/app", () => ({
@@ -27,9 +53,32 @@ vi.mock("../bindings/github.com/ch1lam/autocv/internal/app", () => ({
     GetWorkspace: getJDWorkspaceMock,
     SaveDraft: saveJDDraftMock,
   },
+  MatchService: {
+    Analyze: analyzeMatchesMock,
+    GetReview: getMatchReviewMock,
+  },
+  PDFService: {
+    ExportMarkdown: exportMarkdownMock,
+    ExportPDF: exportPDFMock,
+    GetWorkspace: getPDFWorkspaceMock,
+    Render: renderPDFMock,
+  },
   ProfileService: {
     GetOverview: getOverviewMock,
     ImportMarkdown: importMarkdownMock,
+  },
+  ProviderControlService: {
+    CancelActive: cancelActiveProviderMock,
+  },
+  ResumeService: {
+    Generate: generateResumeMock,
+    GetWorkspace: getResumeWorkspaceMock,
+    SetBlockLocked: setResumeBlockLockedMock,
+    UpdateMarkdown: updateResumeMarkdownMock,
+  },
+  SettingsService: {
+    GetSettings: getSettingsMock,
+    SaveProvider: saveProviderMock,
   },
 }));
 
@@ -114,11 +163,322 @@ const jdWorkspace = {
   },
 };
 
+const matchReview = {
+  status: "ready",
+  message: "匹配分只表示当前资料与 JD 的证据覆盖度。",
+  error: "",
+  jdTitle: "Senior Backend Engineer",
+  company: "Acme",
+  totalScore: 69,
+  hardCapApplied: true,
+  updatedAt: "2026-06-11T03:00:00Z",
+  counts: {
+    strong: 3,
+    partial: 1,
+    missing: 1,
+    unknown: 1,
+  },
+  dimensions: [
+    {
+      category: "required",
+      label: "必要技能与硬性条件",
+      weight: 40,
+      earned: 20,
+      requirementCount: 2,
+    },
+    {
+      category: "responsibility",
+      label: "主要职责证据",
+      weight: 30,
+      earned: 15,
+      requirementCount: 1,
+    },
+    {
+      category: "level",
+      label: "岗位级别与责任范围",
+      weight: 15,
+      earned: 0,
+      requirementCount: 1,
+    },
+    {
+      category: "domain",
+      label: "领域与业务经验",
+      weight: 10,
+      earned: 10,
+      requirementCount: 1,
+    },
+    {
+      category: "preferred",
+      label: "加分项",
+      weight: 5,
+      earned: 5,
+      requirementCount: 1,
+    },
+  ],
+  requirements: [
+    {
+      id: "required-go",
+      category: "required",
+      group: "必要技能与硬性条件",
+      text: "熟练使用 Go 开发生产服务",
+      importance: 5,
+      hardConstraint: false,
+      strength: "strong",
+      explanation: "Go 经验有多处直接证据。",
+      clarificationNeeded: false,
+      evidence: [
+        {
+          id: "evidence-1",
+          kind: "experience",
+          title: "负责支付平台核心服务开发",
+          content: "负责支付平台核心服务开发，使用 Go 构建高并发交易接口。",
+          sources: [
+            {
+              chunkId: "chunk-1",
+              documentId: "document-1",
+              documentName: "backend-profile.md",
+              chunkText:
+                "负责支付平台核心服务开发，使用 Go 构建高并发交易接口。",
+              locatorJson:
+                '{"heading_path":["李志林","工作经历"],"start":120,"end":198}',
+              quoteStart: 0,
+              quoteEnd: 31,
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: "screening-english",
+      category: "required",
+      group: "必要技能与硬性条件",
+      text: "能够阅读英文技术文档",
+      importance: 5,
+      hardConstraint: true,
+      strength: "missing",
+      explanation: "当前资料中没有找到直接证据。",
+      clarificationNeeded: true,
+      evidence: [],
+    },
+    {
+      id: "responsibility-performance",
+      category: "responsibility",
+      group: "主要职责证据",
+      text: "持续改善服务性能",
+      importance: 4,
+      hardConstraint: false,
+      strength: "partial",
+      explanation: "已有优化线索，但覆盖深度仍需确认。",
+      clarificationNeeded: true,
+      evidence: [
+        {
+          id: "evidence-1",
+          kind: "experience",
+          title: "负责支付平台核心服务开发",
+          content: "负责支付平台核心服务开发，使用 Go 构建高并发交易接口。",
+          sources: [],
+        },
+      ],
+    },
+    {
+      id: "level-senior",
+      category: "level",
+      group: "岗位级别与责任范围",
+      text: "Senior",
+      importance: 3,
+      hardConstraint: false,
+      strength: "unknown",
+      explanation: "当前资料无法判断责任范围。",
+      clarificationNeeded: true,
+      evidence: [],
+    },
+    {
+      id: "domain-transaction",
+      category: "domain",
+      group: "领域与业务经验",
+      text: "高并发交易系统",
+      importance: 3,
+      hardConstraint: false,
+      strength: "strong",
+      explanation: "交易平台经验有直接证据。",
+      clarificationNeeded: false,
+      evidence: [
+        {
+          id: "evidence-1",
+          kind: "experience",
+          title: "负责支付平台核心服务开发",
+          content: "负责支付平台核心服务开发，使用 Go 构建高并发交易接口。",
+          sources: [],
+        },
+      ],
+    },
+    {
+      id: "preferred-messaging",
+      category: "preferred",
+      group: "加分项",
+      text: "消息队列与事件驱动经验",
+      importance: 2,
+      hardConstraint: false,
+      strength: "strong",
+      explanation: "资料包含消息队列经验。",
+      clarificationNeeded: false,
+      evidence: [
+        {
+          id: "evidence-1",
+          kind: "project",
+          title: "订单平台",
+          content: "使用消息队列解耦订单创建和下游处理。",
+          sources: [],
+        },
+      ],
+    },
+  ],
+};
+
+const resumeWorkspace = {
+  status: "ready",
+  message: "结构化简历、Markdown 与来源引用已保存到本地。",
+  canExport: true,
+  exportIssues: [],
+  runId: "run-1",
+  resumeId: "resume-1",
+  version: 1,
+  language: "zh",
+  targetRole: "Senior Backend Engineer",
+  packagingLevel: 0.5,
+  packagingLabel: "平衡",
+  markdown: `# Senior Backend Engineer
+
+## 职业概述
+
+<!-- autocv:block:block-summary:start -->
+面向 Senior Backend Engineer 岗位，重点呈现支付平台经验。
+<!-- autocv:block:block-summary:end -->
+
+## 工作经历
+
+<!-- autocv:block:block-experience:start -->
+- 负责支付平台核心服务开发，使用 Go 构建高并发交易接口。
+<!-- autocv:block:block-experience:end -->
+`,
+  updatedAt: "2026-06-11T04:00:00Z",
+  optimizationNotes: [
+    "按当前匹配结果选择 1 条来源证据，并按岗位相关度排序。",
+    "缺失和未知要求未写入简历。",
+  ],
+  blocks: [
+    {
+      id: "block-summary",
+      kind: "summary",
+      label: "职业概述",
+      content:
+        "面向 Senior Backend Engineer 岗位，重点呈现支付平台经验。",
+      locked: false,
+      groundingLevel: "derived",
+      optimization: "用最高相关度的来源概括候选人与目标岗位的连接。",
+      evidence: [matchReview.requirements[0].evidence[0]],
+    },
+    {
+      id: "block-experience",
+      kind: "experience",
+      label: "工作经历",
+      content: "负责支付平台核心服务开发，使用 Go 构建高并发交易接口。",
+      locked: false,
+      groundingLevel: "source",
+      optimization: "对应 Go 服务开发要求。",
+      evidence: [matchReview.requirements[0].evidence[0]],
+    },
+  ],
+};
+
+const pdfWorkspace = {
+  status: "ready",
+  message: "PDF 已从当前 Resume 版本渲染并保存到本地。",
+  exportIssues: [],
+  artifactId: "artifact-1234567890",
+  resumeId: "resume-1",
+  version: 1,
+  language: "zh",
+  targetRole: "Senior Backend Engineer",
+  renderedAt: "2026-06-11T05:00:00Z",
+  contentHash: "1234567890abcdef",
+  pdfBase64: "JVBERi0xLjcK",
+  previewPagesBase64: ["iVBORw0KGgo="],
+  canExport: true,
+};
+
+const providerSettings = {
+  provider: "fake",
+  baseUrl: "",
+  model: "fixture-v1",
+  apiKeyConfigured: false,
+  secretBackend: "macOS Keychain",
+  sentContentTypes: [
+    {
+      label: "JD 原文",
+      description: "仅在分析岗位时发送当前粘贴的岗位描述。",
+    },
+    {
+      label: "相关 Evidence",
+      description: "只发送任务需要的证据内容与来源 ID。",
+    },
+    {
+      label: "Requirement 与匹配上下文",
+      description: "发送结构化岗位要求和必要上下文。",
+    },
+    {
+      label: "Resume Block 与包装参数",
+      description: "发送当前结构化内容和包装档位。",
+    },
+  ],
+  localOnlyTypes: [
+    {
+      label: "API Key",
+      description: "保存在 macOS Keychain。",
+    },
+    {
+      label: "原始资料文件",
+      description: "原文件保留在本地。",
+    },
+    {
+      label: "Typst 与 PDF 产物",
+      description: "排版和导出在本机执行。",
+    },
+  ],
+  configurationNote: "Fake Provider 使用固定 Fixture。",
+  updatedAt: "2026-06-12T06:00:00Z",
+};
+
 describe("Paper Trail match review", () => {
   beforeEach(() => {
+    analyzeMatchesMock.mockReset().mockResolvedValue(matchReview);
     analyzeJDMock.mockReset().mockResolvedValue(jdWorkspace);
+    cancelActiveProviderMock.mockReset().mockResolvedValue({
+      cancelled: true,
+      task: "jd_analysis",
+      message: "已发送取消请求；当前步骤结束后可以直接重试。",
+    });
     getJDWorkspaceMock.mockReset().mockResolvedValue(jdWorkspace);
+    getMatchReviewMock.mockReset().mockResolvedValue(matchReview);
     getOverviewMock.mockReset().mockResolvedValue(profileOverview);
+    getPDFWorkspaceMock.mockReset().mockResolvedValue(pdfWorkspace);
+    getResumeWorkspaceMock.mockReset().mockResolvedValue(resumeWorkspace);
+    getSettingsMock.mockReset().mockResolvedValue(providerSettings);
+    generateResumeMock.mockReset().mockResolvedValue(resumeWorkspace);
+    updateResumeMarkdownMock.mockReset().mockImplementation((markdown) =>
+      Promise.resolve({
+        ...resumeWorkspace,
+        version: 2,
+        markdown,
+      }),
+    );
+    setResumeBlockLockedMock.mockReset().mockResolvedValue({
+      ...resumeWorkspace,
+      version: 2,
+      blocks: resumeWorkspace.blocks.map((block, index) =>
+        index === 0 ? { ...block, locked: true } : block,
+      ),
+    });
     importMarkdownMock.mockReset().mockResolvedValue({
       cancelled: false,
       duplicate: false,
@@ -127,28 +487,104 @@ describe("Paper Trail match review", () => {
       evidenceCount: 1,
       warnings: [],
     });
+    renderPDFMock.mockReset().mockResolvedValue(pdfWorkspace);
+    exportPDFMock.mockReset().mockResolvedValue({
+      cancelled: false,
+      kind: "pdf",
+      path: "/tmp/AutoCV-resume.pdf",
+    });
+    exportMarkdownMock.mockReset().mockResolvedValue({
+      cancelled: false,
+      kind: "markdown",
+      path: "/tmp/AutoCV-resume.md",
+    });
     saveJDDraftMock.mockReset().mockResolvedValue({
       ...jdWorkspace,
       analysisStatus: "pending",
       analysis: null,
     });
+    saveProviderMock.mockReset().mockImplementation((input) =>
+      Promise.resolve({
+        ...providerSettings,
+        provider: input.provider,
+        baseUrl: input.baseUrl,
+        model: input.model,
+        apiKeyConfigured: input.provider === "openai",
+        configurationNote:
+          input.provider === "openai"
+            ? "OpenAI 配置已保存。"
+            : providerSettings.configurationNote,
+      }),
+    );
   });
 
   it("filters requirement rows by match status", async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    const partialTab = screen.getByRole("tab", { name: /部分匹配/ });
+    const partialTab = await screen.findByRole("tab", { name: /部分匹配/ });
     await user.click(partialTab);
 
     expect(partialTab).toHaveAttribute("aria-selected", "true");
 
     const review = within(screen.getByRole("main"));
     expect(
-      review.queryByText("精通 Go 语言，理解并发模型与内存模型"),
+      review.queryByText("熟练使用 Go 开发生产服务"),
     ).not.toBeInTheDocument();
     expect(
-      review.getByText("有 Redis 使用经验，了解缓存策略与高可用方案"),
+      review.getByText("持续改善服务性能"),
+    ).toBeInTheDocument();
+    expect(
+      await within(
+        screen.getByRole("complementary", { name: "来源证据" }),
+      ).findByRole("heading", { name: "持续改善服务性能" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows deterministic dimensions, hard-cap notice, and source evidence", async () => {
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Senior Backend Engineer" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("69")).toBeInTheDocument();
+    expect(
+      screen.getByText(/明确硬性条件.*最高 69/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "匹配分项得分" }),
+    ).toBeInTheDocument();
+
+    const inspector = screen.getByRole("complementary", {
+      name: "来源证据",
+    });
+    expect(within(inspector).getByText("backend-profile.md")).toBeInTheDocument();
+    expect(
+      within(inspector).getByText("Go 经验有多处直接证据。"),
+    ).toBeInTheDocument();
+  });
+
+  it("rebuilds stale match results through the Go service", async () => {
+    const user = userEvent.setup();
+    getMatchReviewMock.mockResolvedValue({
+      ...matchReview,
+      status: "stale",
+      message: "资料或 JD 已变化，旧匹配结果已失效。",
+      requirements: [],
+      dimensions: [],
+    });
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "资料发生变化，需要重新建立证据关联",
+      }),
+    ).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "开始匹配" })[0]);
+
+    expect(analyzeMatchesMock).toHaveBeenCalledOnce();
+    expect(
+      await screen.findByRole("heading", { name: "Senior Backend Engineer" }),
     ).toBeInTheDocument();
   });
 
@@ -156,7 +592,9 @@ describe("Paper Trail match review", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "生成简历" }));
+    await user.click(
+      await screen.findByRole("button", { name: "生成简历" }),
+    );
 
     const dialog = screen.getByRole("dialog", {
       name: "基于当前匹配结果生成简历",
@@ -165,10 +603,155 @@ describe("Paper Trail match review", () => {
     expect(
       within(dialog).getByText(/缺失要求不会被补写成事实/),
     ).toBeInTheDocument();
+    expect(
+      within(
+        within(dialog).getByRole("region", {
+          name: "本次生成的 Provider 发送摘要",
+        }),
+      ).getByText("Fake Provider · 本地 Fixture"),
+    ).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole("button", { name: "继续审阅" }));
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("generates a structured resume and opens Resume Studio", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "生成简历" }),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: "基于当前匹配结果生成简历",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "确认生成" }),
+    );
+
+    expect(generateResumeMock).toHaveBeenCalledWith("zh", 0.5);
+    expect(
+      await screen.findByRole("textbox", { name: "简历 Markdown" }),
+    ).toHaveValue(resumeWorkspace.markdown);
+    expect(
+      screen.getByRole("complementary", { name: "简历 Block 检查器" }),
+    ).toBeInTheDocument();
+  });
+
+  it("saves constrained Markdown and appends a lock version", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "简历工作室" }));
+    const editor = await screen.findByRole("textbox", {
+      name: "简历 Markdown",
+    });
+    const editedMarkdown = resumeWorkspace.markdown.replace(
+      "重点呈现支付平台经验。",
+      "重点呈现支付平台经验与稳定性治理。",
+    );
+    fireEvent.change(editor, { target: { value: editedMarkdown } });
+    await user.click(screen.getByRole("button", { name: "保存新版本" }));
+
+    expect(updateResumeMarkdownMock).toHaveBeenCalledWith(editedMarkdown);
+    expect(
+      await screen.findByText("Markdown 已保存为第 2 版。"),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "锁定内容" }));
+    expect(setResumeBlockLockedMock).toHaveBeenCalledWith(
+      "block-summary",
+      true,
+    );
+    expect(
+      await screen.findByRole("button", { name: "解除锁定" }),
+    ).toBeInTheDocument();
+  });
+
+  it("previews and exports the same PDF artifact", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "PDF 预览" }));
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Senior Backend Engineer",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("complementary", { name: "PDF Artifact 检查器" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByAltText("Senior Backend Engineer PDF 第 1 页预览"),
+    ).toHaveAttribute(
+      "src",
+      `data:image/png;base64,${pdfWorkspace.previewPagesBase64[0]}`,
+    );
+
+    await user.click(
+      within(
+        screen.getByRole("complementary", {
+          name: "PDF Artifact 检查器",
+        }),
+      ).getByRole("button", { name: "导出 PDF" }),
+    );
+    expect(exportPDFMock).toHaveBeenCalledOnce();
+    expect(
+      await screen.findByText("PDF 已导出到 /tmp/AutoCV-resume.pdf"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows unconfirmed content and disables final exports", async () => {
+    const user = userEvent.setup();
+    const exportIssue =
+      "职业概述内容“适合承担目标岗位相关职责。”没有来源，也未经用户确认";
+    getResumeWorkspaceMock.mockResolvedValue({
+      ...resumeWorkspace,
+      canExport: false,
+      exportIssues: [exportIssue],
+      blocks: [
+        {
+          ...resumeWorkspace.blocks[0],
+          content: "适合承担目标岗位相关职责。",
+          evidence: [],
+        },
+        resumeWorkspace.blocks[1],
+      ],
+    });
+    getPDFWorkspaceMock.mockResolvedValue({
+      ...pdfWorkspace,
+      message: "当前 PDF 可以预览，但存在未确认内容，暂不能导出。",
+      canExport: false,
+      exportIssues: [exportIssue],
+    });
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "简历工作室" }));
+    expect(
+      await screen.findByText("最终导出已阻止"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(exportIssue)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "PDF 预览" }));
+    expect(
+      await screen.findByText("预览可用，最终导出已阻止"),
+    ).toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("complementary", {
+          name: "PDF Artifact 检查器",
+        }),
+      ).getByRole("button", { name: "导出 PDF" }),
+    ).toBeDisabled();
+    expect(
+      within(
+        screen.getByRole("complementary", {
+          name: "PDF Artifact 检查器",
+        }),
+      ).getByRole("button", { name: "导出 Markdown" }),
+    ).toBeDisabled();
   });
 
   it("opens the Profile Library and shows source traceability", async () => {
@@ -336,5 +919,133 @@ describe("Paper Trail match review", () => {
     expect(
       screen.getByText("requiredSkills must not be empty"),
     ).toBeInTheDocument();
+  });
+
+  it("shows Provider settings and the privacy ledger without a secret", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "设置" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "AI Provider 与密钥" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("complementary", { name: "AI 数据发送边界" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("JD 原文")).toBeInTheDocument();
+    expect(screen.getByText("Typst 与 PDF 产物")).toBeInTheDocument();
+    expect(screen.getByLabelText("OpenAI API Key")).toHaveValue("");
+    expect(screen.queryByDisplayValue(/sk-/)).not.toBeInTheDocument();
+  });
+
+  it("saves OpenAI settings and clears the API key field", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "设置" }));
+    await screen.findByRole("heading", { name: "AI Provider 与密钥" });
+    await user.click(screen.getByRole("button", { name: /OpenAI/ }));
+    const apiKey = screen.getByLabelText("OpenAI API Key");
+    await user.type(apiKey, "sk-test-secret");
+    await user.click(screen.getByRole("button", { name: "保存设置" }));
+
+    expect(saveProviderMock).toHaveBeenCalledWith({
+      provider: "openai",
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-5.5",
+      apiKey: "sk-test-secret",
+    });
+    expect(
+      await screen.findByText("OpenAI 配置与 Keychain 引用已保存。"),
+    ).toBeInTheDocument();
+    expect(apiKey).toHaveValue("");
+    expect(screen.getByText(/已保存在 macOS Keychain/)).toBeInTheDocument();
+  });
+
+  it("confirms the OpenAI data summary before analyzing a JD", async () => {
+    const user = userEvent.setup();
+    getSettingsMock.mockResolvedValue({
+      ...providerSettings,
+      provider: "openai",
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-5.5",
+      apiKeyConfigured: true,
+    });
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "设置" }));
+    await screen.findByText(/已保存在 macOS Keychain/);
+    await user.click(screen.getByRole("button", { name: "JD 工作区" }));
+    await screen.findByRole("textbox", { name: "岗位 JD 原始文本" });
+    await user.click(screen.getAllByRole("button", { name: "分析 JD" })[0]);
+
+    const dialog = screen.getByRole("dialog", {
+      name: "即将发送给 OpenAI",
+    });
+    expect(within(dialog).getByText("当前 JD 原文")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        "API Key、原始文件和本地 PDF 产物不会发送。",
+      ),
+    ).toBeInTheDocument();
+    expect(analyzeJDMock).not.toHaveBeenCalled();
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "确认并继续" }),
+    );
+    expect(analyzeJDMock).toHaveBeenCalledWith(jdWorkspace.rawText);
+  });
+
+  it("cancels an active OpenAI request and leaves the action retryable", async () => {
+    const user = userEvent.setup();
+    let rejectAnalysis: ((error: Error) => void) | undefined;
+    getSettingsMock.mockResolvedValue({
+      ...providerSettings,
+      provider: "openai",
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-5.5",
+      apiKeyConfigured: true,
+    });
+    analyzeJDMock.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectAnalysis = reject;
+        }),
+    );
+    cancelActiveProviderMock.mockImplementation(() => {
+      rejectAnalysis?.(new Error("context canceled"));
+      return Promise.resolve({
+        cancelled: true,
+        task: "jd_analysis",
+        message: "已发送取消请求；当前步骤结束后可以直接重试。",
+      });
+    });
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "设置" }));
+    await screen.findByText(/已保存在 macOS Keychain/);
+    await user.click(screen.getByRole("button", { name: "JD 工作区" }));
+    await user.click(screen.getAllByRole("button", { name: "分析 JD" })[0]);
+    await user.click(
+      within(
+        screen.getByRole("dialog", { name: "即将发送给 OpenAI" }),
+      ).getByRole("button", { name: "确认并继续" }),
+    );
+
+    const cancelButton = await screen.findByRole("button", {
+      name: "取消请求",
+    });
+    await user.click(cancelButton);
+
+    expect(cancelActiveProviderMock).toHaveBeenCalledOnce();
+    expect(
+      await screen.findByText(
+        "已取消 JD 分析，原文仍保留，可以直接重试。",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("button", { name: "分析 JD" })[0],
+    ).toBeEnabled();
   });
 });

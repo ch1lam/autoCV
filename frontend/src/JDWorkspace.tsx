@@ -15,7 +15,7 @@ import type {
 
 export type JDWorkspaceStatus = "loading" | "ready" | "error";
 export type JDWorkspaceFeedback = {
-  tone: "success" | "warning" | "error";
+  tone: "success" | "warning" | "info" | "error";
   text: string;
 };
 

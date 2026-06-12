@@ -3,21 +3,45 @@
 
 import * as HealthService from "./healthservice.js";
 import * as JDService from "./jdservice.js";
+import * as MatchService from "./matchservice.js";
+import * as PDFService from "./pdfservice.js";
 import * as ProfileService from "./profileservice.js";
+import * as ProviderControlService from "./providercontrolservice.js";
+import * as ResumeService from "./resumeservice.js";
+import * as SettingsService from "./settingsservice.js";
 export {
     HealthService,
     JDService,
-    ProfileService
+    MatchService,
+    PDFService,
+    ProfileService,
+    ProviderControlService,
+    ResumeService,
+    SettingsService
 };
 
 export {
     EvidenceSourceSummary,
     EvidenceSummary,
+    ExportResult,
     HealthStatus,
     ImportMarkdownResult,
     JDAnalysisSummary,
     JDRequirementSummary,
     JDWorkspace,
+    MatchCounts,
+    MatchDimensionSummary,
+    MatchEvidenceSourceSummary,
+    MatchEvidenceSummary,
+    MatchReview,
+    PDFWorkspace,
     ProfileOverview,
+    ProviderCancelResult,
+    ProviderDataSummary,
+    ProviderSettings,
+    RequirementMatchSummary,
+    ResumeBlockSummary,
+    ResumeWorkspace,
+    SaveProviderInput,
     SourceDocumentSummary
 } from "./models.js";

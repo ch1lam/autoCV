@@ -8,6 +8,7 @@ import { Create as $Create } from "@wailsio/runtime";
 export class EvidenceSourceSummary {
     "chunkId": string;
     "documentId": string;
+    "documentName": string;
     "chunkText": string;
     "locatorJson": string;
     "quoteStart": number;
@@ -20,6 +21,9 @@ export class EvidenceSourceSummary {
         }
         if (!("documentId" in $$source)) {
             this["documentId"] = "";
+        }
+        if (!("documentName" in $$source)) {
+            this["documentName"] = "";
         }
         if (!("chunkText" in $$source)) {
             this["chunkText"] = "";
@@ -88,6 +92,35 @@ export class EvidenceSummary {
             $$parsedSource["sources"] = $$createField5_0($$parsedSource["sources"]);
         }
         return new EvidenceSummary($$parsedSource as Partial<EvidenceSummary>);
+    }
+}
+
+export class ExportResult {
+    "cancelled": boolean;
+    "kind": string;
+    "path": string;
+
+    /** Creates a new ExportResult instance. */
+    constructor($$source: Partial<ExportResult> = {}) {
+        if (!("cancelled" in $$source)) {
+            this["cancelled"] = false;
+        }
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ExportResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ExportResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ExportResult($$parsedSource as Partial<ExportResult>);
     }
 }
 
@@ -344,6 +377,312 @@ export class JDWorkspace {
     }
 }
 
+export class MatchCounts {
+    "strong": number;
+    "partial": number;
+    "missing": number;
+    "unknown": number;
+
+    /** Creates a new MatchCounts instance. */
+    constructor($$source: Partial<MatchCounts> = {}) {
+        if (!("strong" in $$source)) {
+            this["strong"] = 0;
+        }
+        if (!("partial" in $$source)) {
+            this["partial"] = 0;
+        }
+        if (!("missing" in $$source)) {
+            this["missing"] = 0;
+        }
+        if (!("unknown" in $$source)) {
+            this["unknown"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MatchCounts instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MatchCounts {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new MatchCounts($$parsedSource as Partial<MatchCounts>);
+    }
+}
+
+export class MatchDimensionSummary {
+    "category": string;
+    "label": string;
+    "weight": number;
+    "earned": number;
+    "requirementCount": number;
+
+    /** Creates a new MatchDimensionSummary instance. */
+    constructor($$source: Partial<MatchDimensionSummary> = {}) {
+        if (!("category" in $$source)) {
+            this["category"] = "";
+        }
+        if (!("label" in $$source)) {
+            this["label"] = "";
+        }
+        if (!("weight" in $$source)) {
+            this["weight"] = 0;
+        }
+        if (!("earned" in $$source)) {
+            this["earned"] = 0;
+        }
+        if (!("requirementCount" in $$source)) {
+            this["requirementCount"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MatchDimensionSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MatchDimensionSummary {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new MatchDimensionSummary($$parsedSource as Partial<MatchDimensionSummary>);
+    }
+}
+
+export class MatchEvidenceSourceSummary {
+    "chunkId": string;
+    "documentId": string;
+    "documentName": string;
+    "chunkText": string;
+    "locatorJson": string;
+    "quoteStart": number;
+    "quoteEnd": number;
+
+    /** Creates a new MatchEvidenceSourceSummary instance. */
+    constructor($$source: Partial<MatchEvidenceSourceSummary> = {}) {
+        if (!("chunkId" in $$source)) {
+            this["chunkId"] = "";
+        }
+        if (!("documentId" in $$source)) {
+            this["documentId"] = "";
+        }
+        if (!("documentName" in $$source)) {
+            this["documentName"] = "";
+        }
+        if (!("chunkText" in $$source)) {
+            this["chunkText"] = "";
+        }
+        if (!("locatorJson" in $$source)) {
+            this["locatorJson"] = "";
+        }
+        if (!("quoteStart" in $$source)) {
+            this["quoteStart"] = 0;
+        }
+        if (!("quoteEnd" in $$source)) {
+            this["quoteEnd"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MatchEvidenceSourceSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MatchEvidenceSourceSummary {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new MatchEvidenceSourceSummary($$parsedSource as Partial<MatchEvidenceSourceSummary>);
+    }
+}
+
+export class MatchEvidenceSummary {
+    "id": string;
+    "kind": string;
+    "title": string;
+    "content": string;
+    "sources": MatchEvidenceSourceSummary[];
+
+    /** Creates a new MatchEvidenceSummary instance. */
+    constructor($$source: Partial<MatchEvidenceSummary> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("content" in $$source)) {
+            this["content"] = "";
+        }
+        if (!("sources" in $$source)) {
+            this["sources"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MatchEvidenceSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MatchEvidenceSummary {
+        const $$createField4_0 = $$createType9;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("sources" in $$parsedSource) {
+            $$parsedSource["sources"] = $$createField4_0($$parsedSource["sources"]);
+        }
+        return new MatchEvidenceSummary($$parsedSource as Partial<MatchEvidenceSummary>);
+    }
+}
+
+export class MatchReview {
+    "status": string;
+    "message": string;
+    "error": string;
+    "jdTitle": string;
+    "company": string;
+    "totalScore": number;
+    "hardCapApplied": boolean;
+    "updatedAt": string;
+    "counts": MatchCounts;
+    "dimensions": MatchDimensionSummary[];
+    "requirements": RequirementMatchSummary[];
+
+    /** Creates a new MatchReview instance. */
+    constructor($$source: Partial<MatchReview> = {}) {
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+        if (!("error" in $$source)) {
+            this["error"] = "";
+        }
+        if (!("jdTitle" in $$source)) {
+            this["jdTitle"] = "";
+        }
+        if (!("company" in $$source)) {
+            this["company"] = "";
+        }
+        if (!("totalScore" in $$source)) {
+            this["totalScore"] = 0;
+        }
+        if (!("hardCapApplied" in $$source)) {
+            this["hardCapApplied"] = false;
+        }
+        if (!("updatedAt" in $$source)) {
+            this["updatedAt"] = "";
+        }
+        if (!("counts" in $$source)) {
+            this["counts"] = (new MatchCounts());
+        }
+        if (!("dimensions" in $$source)) {
+            this["dimensions"] = [];
+        }
+        if (!("requirements" in $$source)) {
+            this["requirements"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MatchReview instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MatchReview {
+        const $$createField8_0 = $$createType10;
+        const $$createField9_0 = $$createType12;
+        const $$createField10_0 = $$createType14;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("counts" in $$parsedSource) {
+            $$parsedSource["counts"] = $$createField8_0($$parsedSource["counts"]);
+        }
+        if ("dimensions" in $$parsedSource) {
+            $$parsedSource["dimensions"] = $$createField9_0($$parsedSource["dimensions"]);
+        }
+        if ("requirements" in $$parsedSource) {
+            $$parsedSource["requirements"] = $$createField10_0($$parsedSource["requirements"]);
+        }
+        return new MatchReview($$parsedSource as Partial<MatchReview>);
+    }
+}
+
+export class PDFWorkspace {
+    "status": string;
+    "message": string;
+    "exportIssues": string[];
+    "artifactId": string;
+    "resumeId": string;
+    "version": number;
+    "language": string;
+    "targetRole": string;
+    "renderedAt": string;
+    "contentHash": string;
+    "pdfBase64": string;
+    "previewPagesBase64": string[];
+    "canExport": boolean;
+
+    /** Creates a new PDFWorkspace instance. */
+    constructor($$source: Partial<PDFWorkspace> = {}) {
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+        if (!("exportIssues" in $$source)) {
+            this["exportIssues"] = [];
+        }
+        if (!("artifactId" in $$source)) {
+            this["artifactId"] = "";
+        }
+        if (!("resumeId" in $$source)) {
+            this["resumeId"] = "";
+        }
+        if (!("version" in $$source)) {
+            this["version"] = 0;
+        }
+        if (!("language" in $$source)) {
+            this["language"] = "";
+        }
+        if (!("targetRole" in $$source)) {
+            this["targetRole"] = "";
+        }
+        if (!("renderedAt" in $$source)) {
+            this["renderedAt"] = "";
+        }
+        if (!("contentHash" in $$source)) {
+            this["contentHash"] = "";
+        }
+        if (!("pdfBase64" in $$source)) {
+            this["pdfBase64"] = "";
+        }
+        if (!("previewPagesBase64" in $$source)) {
+            this["previewPagesBase64"] = [];
+        }
+        if (!("canExport" in $$source)) {
+            this["canExport"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PDFWorkspace instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PDFWorkspace {
+        const $$createField2_0 = $$createType3;
+        const $$createField11_0 = $$createType3;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("exportIssues" in $$parsedSource) {
+            $$parsedSource["exportIssues"] = $$createField2_0($$parsedSource["exportIssues"]);
+        }
+        if ("previewPagesBase64" in $$parsedSource) {
+            $$parsedSource["previewPagesBase64"] = $$createField11_0($$parsedSource["previewPagesBase64"]);
+        }
+        return new PDFWorkspace($$parsedSource as Partial<PDFWorkspace>);
+    }
+}
+
 export class ProfileOverview {
     "profileId": string;
     "name": string;
@@ -376,8 +715,8 @@ export class ProfileOverview {
      * Creates a new ProfileOverview instance from a string or object.
      */
     static createFrom($$source: any = {}): ProfileOverview {
-        const $$createField3_0 = $$createType8;
-        const $$createField4_0 = $$createType10;
+        const $$createField3_0 = $$createType15;
+        const $$createField4_0 = $$createType17;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("documents" in $$parsedSource) {
             $$parsedSource["documents"] = $$createField3_0($$parsedSource["documents"]);
@@ -386,6 +725,357 @@ export class ProfileOverview {
             $$parsedSource["evidence"] = $$createField4_0($$parsedSource["evidence"]);
         }
         return new ProfileOverview($$parsedSource as Partial<ProfileOverview>);
+    }
+}
+
+export class ProviderCancelResult {
+    "cancelled": boolean;
+    "task": string;
+    "message": string;
+
+    /** Creates a new ProviderCancelResult instance. */
+    constructor($$source: Partial<ProviderCancelResult> = {}) {
+        if (!("cancelled" in $$source)) {
+            this["cancelled"] = false;
+        }
+        if (!("task" in $$source)) {
+            this["task"] = "";
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ProviderCancelResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ProviderCancelResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ProviderCancelResult($$parsedSource as Partial<ProviderCancelResult>);
+    }
+}
+
+export class ProviderDataSummary {
+    "label": string;
+    "description": string;
+
+    /** Creates a new ProviderDataSummary instance. */
+    constructor($$source: Partial<ProviderDataSummary> = {}) {
+        if (!("label" in $$source)) {
+            this["label"] = "";
+        }
+        if (!("description" in $$source)) {
+            this["description"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ProviderDataSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ProviderDataSummary {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ProviderDataSummary($$parsedSource as Partial<ProviderDataSummary>);
+    }
+}
+
+export class ProviderSettings {
+    "provider": string;
+    "baseUrl": string;
+    "model": string;
+    "apiKeyConfigured": boolean;
+    "secretBackend": string;
+    "sentContentTypes": ProviderDataSummary[];
+    "localOnlyTypes": ProviderDataSummary[];
+    "configurationNote": string;
+    "updatedAt": string;
+
+    /** Creates a new ProviderSettings instance. */
+    constructor($$source: Partial<ProviderSettings> = {}) {
+        if (!("provider" in $$source)) {
+            this["provider"] = "";
+        }
+        if (!("baseUrl" in $$source)) {
+            this["baseUrl"] = "";
+        }
+        if (!("model" in $$source)) {
+            this["model"] = "";
+        }
+        if (!("apiKeyConfigured" in $$source)) {
+            this["apiKeyConfigured"] = false;
+        }
+        if (!("secretBackend" in $$source)) {
+            this["secretBackend"] = "";
+        }
+        if (!("sentContentTypes" in $$source)) {
+            this["sentContentTypes"] = [];
+        }
+        if (!("localOnlyTypes" in $$source)) {
+            this["localOnlyTypes"] = [];
+        }
+        if (!("configurationNote" in $$source)) {
+            this["configurationNote"] = "";
+        }
+        if (!("updatedAt" in $$source)) {
+            this["updatedAt"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ProviderSettings instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ProviderSettings {
+        const $$createField5_0 = $$createType19;
+        const $$createField6_0 = $$createType19;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("sentContentTypes" in $$parsedSource) {
+            $$parsedSource["sentContentTypes"] = $$createField5_0($$parsedSource["sentContentTypes"]);
+        }
+        if ("localOnlyTypes" in $$parsedSource) {
+            $$parsedSource["localOnlyTypes"] = $$createField6_0($$parsedSource["localOnlyTypes"]);
+        }
+        return new ProviderSettings($$parsedSource as Partial<ProviderSettings>);
+    }
+}
+
+export class RequirementMatchSummary {
+    "id": string;
+    "category": string;
+    "group": string;
+    "text": string;
+    "importance": number;
+    "hardConstraint": boolean;
+    "strength": string;
+    "explanation": string;
+    "clarificationNeeded": boolean;
+    "evidence": MatchEvidenceSummary[];
+
+    /** Creates a new RequirementMatchSummary instance. */
+    constructor($$source: Partial<RequirementMatchSummary> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("category" in $$source)) {
+            this["category"] = "";
+        }
+        if (!("group" in $$source)) {
+            this["group"] = "";
+        }
+        if (!("text" in $$source)) {
+            this["text"] = "";
+        }
+        if (!("importance" in $$source)) {
+            this["importance"] = 0;
+        }
+        if (!("hardConstraint" in $$source)) {
+            this["hardConstraint"] = false;
+        }
+        if (!("strength" in $$source)) {
+            this["strength"] = "";
+        }
+        if (!("explanation" in $$source)) {
+            this["explanation"] = "";
+        }
+        if (!("clarificationNeeded" in $$source)) {
+            this["clarificationNeeded"] = false;
+        }
+        if (!("evidence" in $$source)) {
+            this["evidence"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RequirementMatchSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): RequirementMatchSummary {
+        const $$createField9_0 = $$createType21;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("evidence" in $$parsedSource) {
+            $$parsedSource["evidence"] = $$createField9_0($$parsedSource["evidence"]);
+        }
+        return new RequirementMatchSummary($$parsedSource as Partial<RequirementMatchSummary>);
+    }
+}
+
+export class ResumeBlockSummary {
+    "id": string;
+    "kind": string;
+    "label": string;
+    "content": string;
+    "locked": boolean;
+    "groundingLevel": string;
+    "optimization": string;
+    "evidence": MatchEvidenceSummary[];
+
+    /** Creates a new ResumeBlockSummary instance. */
+    constructor($$source: Partial<ResumeBlockSummary> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+        if (!("label" in $$source)) {
+            this["label"] = "";
+        }
+        if (!("content" in $$source)) {
+            this["content"] = "";
+        }
+        if (!("locked" in $$source)) {
+            this["locked"] = false;
+        }
+        if (!("groundingLevel" in $$source)) {
+            this["groundingLevel"] = "";
+        }
+        if (!("optimization" in $$source)) {
+            this["optimization"] = "";
+        }
+        if (!("evidence" in $$source)) {
+            this["evidence"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ResumeBlockSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ResumeBlockSummary {
+        const $$createField7_0 = $$createType21;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("evidence" in $$parsedSource) {
+            $$parsedSource["evidence"] = $$createField7_0($$parsedSource["evidence"]);
+        }
+        return new ResumeBlockSummary($$parsedSource as Partial<ResumeBlockSummary>);
+    }
+}
+
+export class ResumeWorkspace {
+    "status": string;
+    "message": string;
+    "canExport": boolean;
+    "exportIssues": string[];
+    "runId": string;
+    "resumeId": string;
+    "version": number;
+    "language": string;
+    "targetRole": string;
+    "packagingLevel": number;
+    "packagingLabel": string;
+    "markdown": string;
+    "updatedAt": string;
+    "optimizationNotes": string[];
+    "blocks": ResumeBlockSummary[];
+
+    /** Creates a new ResumeWorkspace instance. */
+    constructor($$source: Partial<ResumeWorkspace> = {}) {
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+        if (!("canExport" in $$source)) {
+            this["canExport"] = false;
+        }
+        if (!("exportIssues" in $$source)) {
+            this["exportIssues"] = [];
+        }
+        if (!("runId" in $$source)) {
+            this["runId"] = "";
+        }
+        if (!("resumeId" in $$source)) {
+            this["resumeId"] = "";
+        }
+        if (!("version" in $$source)) {
+            this["version"] = 0;
+        }
+        if (!("language" in $$source)) {
+            this["language"] = "";
+        }
+        if (!("targetRole" in $$source)) {
+            this["targetRole"] = "";
+        }
+        if (!("packagingLevel" in $$source)) {
+            this["packagingLevel"] = 0;
+        }
+        if (!("packagingLabel" in $$source)) {
+            this["packagingLabel"] = "";
+        }
+        if (!("markdown" in $$source)) {
+            this["markdown"] = "";
+        }
+        if (!("updatedAt" in $$source)) {
+            this["updatedAt"] = "";
+        }
+        if (!("optimizationNotes" in $$source)) {
+            this["optimizationNotes"] = [];
+        }
+        if (!("blocks" in $$source)) {
+            this["blocks"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ResumeWorkspace instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ResumeWorkspace {
+        const $$createField3_0 = $$createType3;
+        const $$createField13_0 = $$createType3;
+        const $$createField14_0 = $$createType23;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("exportIssues" in $$parsedSource) {
+            $$parsedSource["exportIssues"] = $$createField3_0($$parsedSource["exportIssues"]);
+        }
+        if ("optimizationNotes" in $$parsedSource) {
+            $$parsedSource["optimizationNotes"] = $$createField13_0($$parsedSource["optimizationNotes"]);
+        }
+        if ("blocks" in $$parsedSource) {
+            $$parsedSource["blocks"] = $$createField14_0($$parsedSource["blocks"]);
+        }
+        return new ResumeWorkspace($$parsedSource as Partial<ResumeWorkspace>);
+    }
+}
+
+export class SaveProviderInput {
+    "provider": string;
+    "baseUrl": string;
+    "model": string;
+    "apiKey": string;
+
+    /** Creates a new SaveProviderInput instance. */
+    constructor($$source: Partial<SaveProviderInput> = {}) {
+        if (!("provider" in $$source)) {
+            this["provider"] = "";
+        }
+        if (!("baseUrl" in $$source)) {
+            this["baseUrl"] = "";
+        }
+        if (!("model" in $$source)) {
+            this["model"] = "";
+        }
+        if (!("apiKey" in $$source)) {
+            this["apiKey"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SaveProviderInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SaveProviderInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SaveProviderInput($$parsedSource as Partial<SaveProviderInput>);
     }
 }
 
@@ -435,6 +1125,19 @@ const $$createType4 = JDRequirementSummary.createFrom;
 const $$createType5 = $Create.Array($$createType4);
 const $$createType6 = JDAnalysisSummary.createFrom;
 const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = $Create.Array($$createType2);
-const $$createType9 = EvidenceSummary.createFrom;
-const $$createType10 = $Create.Array($$createType9);
+const $$createType8 = MatchEvidenceSourceSummary.createFrom;
+const $$createType9 = $Create.Array($$createType8);
+const $$createType10 = MatchCounts.createFrom;
+const $$createType11 = MatchDimensionSummary.createFrom;
+const $$createType12 = $Create.Array($$createType11);
+const $$createType13 = RequirementMatchSummary.createFrom;
+const $$createType14 = $Create.Array($$createType13);
+const $$createType15 = $Create.Array($$createType2);
+const $$createType16 = EvidenceSummary.createFrom;
+const $$createType17 = $Create.Array($$createType16);
+const $$createType18 = ProviderDataSummary.createFrom;
+const $$createType19 = $Create.Array($$createType18);
+const $$createType20 = MatchEvidenceSummary.createFrom;
+const $$createType21 = $Create.Array($$createType20);
+const $$createType22 = ResumeBlockSummary.createFrom;
+const $$createType23 = $Create.Array($$createType22);
