@@ -1,0 +1,99 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "role": {
+      "type": "string"
+    },
+    "company": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "level": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "language": {
+      "type": "string",
+      "enum": [
+        "zh",
+        "en",
+        "mixed"
+      ]
+    },
+    "responsibilities": {
+      "$ref": "#/$defs/requirements"
+    },
+    "required_skills": {
+      "$ref": "#/$defs/requirements"
+    },
+    "preferred_skills": {
+      "$ref": "#/$defs/requirements"
+    },
+    "domain_signals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "screening_constraints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ambiguities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "role",
+    "company",
+    "level",
+    "language",
+    "responsibilities",
+    "required_skills",
+    "preferred_skills",
+    "domain_signals",
+    "screening_constraints",
+    "ambiguities"
+  ],
+  "$defs": {
+    "requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "importance": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "hard_constraint": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "importance",
+          "hard_constraint"
+        ]
+      }
+    }
+  }
+}

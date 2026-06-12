@@ -106,6 +106,9 @@ func (service *JDService) Analyze(rawText string) (JDWorkspace, error) {
 		},
 	)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return JDWorkspace{}, fmt.Errorf("analyze JD: %w", err)
+		}
 		service.saveAnalysisFailure(ctx, draft, err)
 		return JDWorkspace{}, fmt.Errorf("analyze JD: %w", err)
 	}

@@ -6,6 +6,7 @@ toolchain go1.26.4
 
 require (
 	github.com/google/uuid v1.6.0
+	github.com/openai/openai-go/v3 v3.39.0
 	github.com/wailsapp/wails/v3 v3.0.0-alpha.98
 	github.com/yuin/goldmark v1.8.2
 	modernc.org/sqlite v1.52.0
@@ -39,6 +40,10 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/skeema/knownhosts v1.3.2 // indirect
+	github.com/tidwall/gjson v1.18.0 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.1 // indirect
+	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/wailsapp/wails/webview2 v1.0.24 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	golang.org/x/crypto v0.50.0 // indirect

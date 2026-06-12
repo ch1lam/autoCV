@@ -7,14 +7,19 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/ch1lam/autocv/internal/adapters/configfile"
 	"github.com/ch1lam/autocv/internal/adapters/fakeprovider"
 	"github.com/ch1lam/autocv/internal/adapters/filesystem"
+	"github.com/ch1lam/autocv/internal/adapters/keychain"
 	"github.com/ch1lam/autocv/internal/adapters/logging"
 	markdownparser "github.com/ch1lam/autocv/internal/adapters/markdown"
+	"github.com/ch1lam/autocv/internal/adapters/openaiprovider"
+	"github.com/ch1lam/autocv/internal/adapters/providerrouter"
 	"github.com/ch1lam/autocv/internal/adapters/sqlite"
 	"github.com/ch1lam/autocv/internal/adapters/systemclock"
+	typstrenderer "github.com/ch1lam/autocv/internal/adapters/typst"
 	"github.com/ch1lam/autocv/internal/adapters/wailsdialog"
 	appservice "github.com/ch1lam/autocv/internal/app"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -81,17 +86,73 @@ func run() error {
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
 	})
-	app.RegisterService(application.NewService(appservice.NewProfileService(
-		sqlite.NewProfileRepository(db),
-		markdownparser.New(),
+	profileRepository := sqlite.NewProfileRepository(db)
+	jdRepository := sqlite.NewJDRepository(db)
+	matchRepository := sqlite.NewMatchRepository(db)
+	providerConfigRepository := sqlite.NewProviderConfigRepository(db)
+	providerCallRepository := sqlite.NewProviderCallRepository(db)
+	secretStore := keychain.New("io.github.ch1lam.autocv")
+	openAIProvider, err := openaiprovider.NewDynamicProvider(
+		providerConfigRepository,
+		secretStore,
+		providerCallRepository,
+		60*time.Second,
+		1,
+	)
+	if err != nil {
+		return err
+	}
+	provider := providerrouter.New(
+		providerConfigRepository,
 		fakeprovider.New(),
+		openAIProvider,
+	)
+	app.RegisterService(application.NewService(
+		appservice.NewProviderControlService(provider),
+	))
+	app.RegisterService(application.NewService(appservice.NewSettingsService(
+		providerConfigRepository,
+		secretStore,
+		systemclock.Clock{},
+	)))
+	app.RegisterService(application.NewService(appservice.NewProfileService(
+		profileRepository,
+		markdownparser.New(),
+		provider,
 		managedFiles,
 		wailsdialog.NewMarkdownPicker(app),
 		systemclock.Clock{},
 	)))
 	app.RegisterService(application.NewService(appservice.NewJDService(
-		sqlite.NewJDRepository(db),
-		fakeprovider.New(),
+		jdRepository,
+		provider,
+		systemclock.Clock{},
+	)))
+	app.RegisterService(application.NewService(appservice.NewMatchService(
+		matchRepository,
+		profileRepository,
+		jdRepository,
+		provider,
+		systemclock.Clock{},
+	)))
+	resumeService := appservice.NewResumeService(
+		sqlite.NewResumeRepository(db),
+		matchRepository,
+		profileRepository,
+		jdRepository,
+		provider,
+		systemclock.Clock{},
+	)
+	app.RegisterService(application.NewService(resumeService))
+	app.RegisterService(application.NewService(appservice.NewPDFService(
+		resumeService,
+		sqlite.NewArtifactRepository(db),
+		managedFiles,
+		typstrenderer.NewRenderer(
+			os.Getenv("AUTOCV_TYPST_BIN"),
+			20*time.Second,
+		),
+		wailsdialog.NewExportPicker(app),
 		systemclock.Clock{},
 	)))
 

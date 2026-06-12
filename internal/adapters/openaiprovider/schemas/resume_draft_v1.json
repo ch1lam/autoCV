@@ -1,0 +1,75 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "language": {
+      "type": "string",
+      "enum": [
+        "zh",
+        "en"
+      ]
+    },
+    "target_role": {
+      "type": "string"
+    },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "summary",
+              "experience",
+              "project",
+              "skill",
+              "education",
+              "certification"
+            ]
+          },
+          "content": {
+            "type": "string"
+          },
+          "source_evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "grounding_level": {
+            "type": "string",
+            "enum": [
+              "source",
+              "derived",
+              "user_confirmed"
+            ]
+          },
+          "optimization": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "content",
+          "source_evidence_ids",
+          "grounding_level",
+          "optimization"
+        ]
+      }
+    },
+    "optimization_notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "language",
+    "target_role",
+    "blocks",
+    "optimization_notes"
+  ]
+}
