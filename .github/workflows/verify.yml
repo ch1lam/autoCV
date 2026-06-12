@@ -1,0 +1,90 @@
+name: Verify
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    env:
+      TYPST_VERSION: 0.14.2
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Install Typst and fonts
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes fonts-liberation fonts-noto-cjk
+          mkdir -p "${RUNNER_TEMP}/typst"
+          curl --fail --location --retry 3 \
+            --output "${RUNNER_TEMP}/typst.tar.xz" \
+            "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-x86_64-unknown-linux-musl.tar.xz"
+          tar --extract --xz \
+            --file "${RUNNER_TEMP}/typst.tar.xz" \
+            --directory "${RUNNER_TEMP}/typst" \
+            --strip-components 1
+          echo "${RUNNER_TEMP}/typst" >> "${GITHUB_PATH}"
+
+      - name: Verify tool versions
+        shell: bash
+        run: |
+          go version
+          node --version
+          npm --version
+          typst --version | grep "typst ${TYPST_VERSION}"
+          fc-match "Noto Sans CJK SC"
+          fc-match "Liberation Sans"
+
+      - name: Check Go formatting
+        run: test -z "$(gofmt -l main.go internal migrations)"
+
+      - name: Run Go tests
+        run: go test ./...
+
+      - name: Compile Chinese and English PDFs
+        run: >-
+          go test ./internal/adapters/typst
+          -run TestRendererCompilesChineseAndEnglishTextPDFs
+          -count=1
+          -v
+
+      - name: Run frontend tests
+        run: npm --prefix frontend run test:run
+
+      - name: Check frontend types
+        run: npm --prefix frontend run typecheck
+
+      - name: Build frontend
+        run: npm --prefix frontend run build
+
+      - name: Check whitespace
+        run: git diff --check
