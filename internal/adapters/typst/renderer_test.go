@@ -34,6 +34,16 @@ func TestNewViewModelUsesLanguageSpecificHeadingsAndItems(t *testing.T) {
 	if len(view.Sections) != 2 || len(view.Sections[1].Items) != 3 {
 		t.Fatalf("expected repeated block kinds to share a section: %#v", view)
 	}
+	if !containsString(view.Fonts, "Noto Sans CJK SC") {
+		t.Fatalf("expected portable Chinese font fallback: %#v", view.Fonts)
+	}
+}
+
+func TestNewViewModelUsesPortableEnglishFontFallback(t *testing.T) {
+	view := NewViewModel(renderFixture(domain.ResumeLanguageEnglish))
+	if !containsString(view.Fonts, "Liberation Sans") {
+		t.Fatalf("expected portable English font fallback: %#v", view.Fonts)
+	}
 }
 
 func TestRendererCompilesChineseAndEnglishTextPDFs(t *testing.T) {
@@ -100,4 +110,13 @@ func renderFixture(language domain.ResumeLanguage) domain.Resume {
 			{Kind: domain.ResumeBlockExperience, Content: experience},
 		},
 	}
+}
+
+func containsString(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
 }

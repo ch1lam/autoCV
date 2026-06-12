@@ -288,9 +288,15 @@ func sectionHeading(
 
 func fontsFor(language domain.ResumeLanguage) []string {
 	if language == domain.ResumeLanguageChinese {
-		return []string{"Charter", "Hiragino Sans GB", "Arial Unicode MS"}
+		return []string{
+			"Charter",
+			"Noto Sans CJK SC",
+			"Hiragino Sans GB",
+			"Arial Unicode MS",
+			"Liberation Sans",
+		}
 	}
-	return []string{"Charter", "Arial"}
+	return []string{"Charter", "Liberation Sans", "Arial", "DejaVu Sans"}
 }
 
 func diagnosticSummary(output []byte) string {
