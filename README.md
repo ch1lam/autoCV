@@ -170,16 +170,21 @@ The workflow is explicitly owned by Go rather than an Agent framework. See the [
 
 ## Development Status
 
-AutoCV has completed the M0 engineering baseline:
+AutoCV has completed the M0 engineering baseline and the fixture-backed M1
+Markdown-to-PDF vertical flow:
 
 - Wails 3 desktop shell with a React and TypeScript frontend.
 - Paper Trail match-review interface with functional first-screen controls.
 - Go health-check binding.
 - Operating-system application data directories.
-- SQLite startup migrations and the eight minimum M0 tables.
+- SQLite startup migrations and persistent M1 workflow records.
 - Versioned local configuration without API key fields.
 - Structured JSON logs with default content and secret redaction.
 - Strict JD Analysis Schema validation and a fixture-backed Fake Provider.
+- Structured Resume versions with lock-preserving regeneration.
+- Local Typst PDF rendering, Artifact recovery, preview, and export.
+- Fake Provider integration coverage from Markdown import through a persisted
+  PDF Artifact.
 - Go and frontend unit tests plus a unified verification command.
 
 The current implementation documents are:
@@ -189,16 +194,19 @@ The current implementation documents are:
 - [AutoCV MVP Implementation Plan](./docs/plans/mvp-implementation-plan.md)
 - [Paper Trail Design QA](./design-qa.md)
 
-The next work is M1: the first Markdown-to-PDF vertical slice. Real local
-resumes and JDs remain required for MVP validation, but they are not committed
-to the repository.
+The official OpenAI Go SDK adapter is wired through the Provider configuration
+and macOS Keychain. The remaining M1 work is native desktop and real-sample
+validation. Real local resumes and JDs are never committed to the repository.
 
 ## Local Development
 
-Required versions are pinned in `go.mod`, `.nvmrc`, and
-`frontend/package.json`.
+Required Go and Node versions are pinned in `go.mod`, `.nvmrc`, and
+`frontend/package.json`. PDF rendering currently requires Typst `0.14.2`
+available on `PATH`; set `AUTOCV_TYPST_BIN` when using another verified binary
+location.
 
 ```bash
+typst --version
 npm --prefix frontend install
 wails3 task verify
 wails3 task dev

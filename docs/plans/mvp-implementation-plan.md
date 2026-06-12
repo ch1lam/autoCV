@@ -123,12 +123,12 @@ Markdown 职业资料
 
 任务：
 
-- [ ] 创建默认 Profile。
-- [ ] 通过原生文件选择器选择 Markdown。
-- [ ] 保存受管理副本、Hash 和导入记录。
-- [ ] 按标题和段落切分 Source Chunk。
-- [ ] 使用 Fake Provider 提取 Evidence。
-- [ ] 提供导入结果和警告界面。
+- [x] 创建默认 Profile。
+- [x] 通过原生文件选择器选择 Markdown。
+- [x] 保存受管理副本、Hash 和导入记录。
+- [x] 按标题和段落切分 Source Chunk。
+- [x] 使用 Fake Provider 提取 Evidence。
+- [x] 提供导入结果和警告界面。
 
 验收：
 
@@ -162,11 +162,11 @@ Markdown 职业资料
 
 任务：
 
-- [ ] 定义 Requirement、Match 和 Evidence 关联。
-- [ ] 让 Provider 提供语义匹配建议。
-- [ ] 在 Go 中计算确定性总分和分项分数。
-- [ ] 展示强匹配、弱匹配、缺失和未知项。
-- [ ] 实现硬性条件缺失时的 69 分上限。
+- [x] 定义 Requirement、Match 和 Evidence 关联。
+- [x] 让 Provider 提供语义匹配建议。
+- [x] 在 Go 中计算确定性总分和分项分数。
+- [x] 展示强匹配、弱匹配、缺失和未知项。
+- [x] 实现硬性条件缺失时的 69 分上限。
 
 验收：
 
@@ -178,12 +178,12 @@ Markdown 职业资料
 
 任务：
 
-- [ ] 定义 Resume 和 Resume Block Schema。
-- [ ] 基于匹配结果生成结构化 Resume。
-- [ ] 验证每个关键 Block 的来源。
-- [ ] 从 Resume 派生 Markdown。
-- [ ] 提供 Markdown 查看和简单编辑。
-- [ ] 展示主要优化说明。
+- [x] 定义 Resume 和 Resume Block Schema。
+- [x] 基于匹配结果生成结构化 Resume。
+- [x] 验证每个关键 Block 的来源。
+- [x] 从 Resume 派生 Markdown。
+- [x] 提供 Markdown 查看和简单编辑。
+- [x] 展示主要优化说明。
 
 验收：
 
@@ -195,12 +195,12 @@ Markdown 职业资料
 
 任务：
 
-- [ ] 建立 Resume 到 Typst View Model。
-- [ ] 创建单栏 ATS 友好模板。
-- [ ] 配置中英文字体。
-- [ ] 实现本地 Typst 执行、超时和错误捕获。
-- [ ] 保存 PDF Artifact。
-- [ ] 在应用中预览，并导出 Markdown/PDF。
+- [x] 建立 Resume 到 Typst View Model。
+- [x] 创建单栏 ATS 友好模板。
+- [x] 配置中英文字体。
+- [x] 实现本地 Typst 执行、超时和错误捕获。
+- [x] 保存 PDF Artifact。
+- [x] 在应用中预览，并导出 Markdown/PDF。
 
 验收：
 
@@ -213,13 +213,13 @@ Markdown 职业资料
 
 任务：
 
-- [ ] 实现 Provider 配置界面。
-- [ ] API Key 写入系统 Keychain。
-- [ ] 接入 OpenAI 官方 Go SDK。
-- [ ] 为每个任务使用独立结构化 Schema。
-- [ ] 实现超时、取消、有限重试和用量元数据。
-- [ ] 实现 Schema 修复一次的策略。
-- [ ] 在发起请求前显示 Provider 和发送内容类型摘要。
+- [x] 实现 Provider 配置界面。
+- [x] API Key 写入系统 Keychain。
+- [x] 接入 OpenAI 官方 Go SDK。
+- [x] 为每个任务使用独立结构化 Schema。
+- [x] 实现超时、取消、有限重试和用量元数据。
+- [x] 实现 Schema 修复一次的策略。
+- [x] 在发起请求前显示 Provider 和发送内容类型摘要。
 
 验收：
 
@@ -289,18 +289,18 @@ Markdown 职业资料
 
 ### 8.3 Slice 3：来源追溯
 
-- [ ] 增加 `block_sources`。
-- [ ] 在 Resume Studio 显示关键 Block 的来源。
-- [ ] 支持跳转到 Source Chunk。
-- [ ] 标识来源、归纳和用户确认三种 Grounding Level。
-- [ ] 高风险无来源 Block 阻止最终导出。
+- [x] 增加 `block_sources`。
+- [x] 在 Resume Studio 显示关键 Block 的来源。
+- [x] 支持跳转到 Source Chunk。
+- [x] 标识来源、归纳和用户确认三种 Grounding Level。
+- [x] 高风险无来源 Block 阻止最终导出。
 
 ### 8.4 Slice 4：内容锁定
 
-- [ ] 支持 Block 级锁定。
-- [ ] 重新生成时把锁定块作为不可修改输入。
-- [ ] Go 侧比较并拒绝被修改的锁定块。
-- [ ] 上游变化与锁定块冲突时给出提示。
+- [x] 支持 Block 级锁定。
+- [x] 重新生成时把锁定块作为不可修改输入。
+- [x] Go 侧比较并拒绝被修改的锁定块。
+- [x] 上游变化与锁定块冲突时给出提示。
 
 验收：
 
@@ -352,9 +352,9 @@ Markdown 职业资料
 
 ### 10.1 合成测试
 
-- [ ] 仓库内提供不包含真实个人信息的中英文样本。
+- [x] 仓库内提供不包含真实个人信息的中英文样本。
 - [ ] CI 完成 Go 单元测试、前端检查和 Typst 模板测试。
-- [ ] Fake Provider 端到端流程稳定通过。
+- [x] Fake Provider 端到端流程稳定通过。
 
 ### 10.2 私有真实样本
 
