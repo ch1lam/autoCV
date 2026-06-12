@@ -6,7 +6,7 @@ import (
 )
 
 func TestParsePreservesHeadingContextAndListItems(t *testing.T) {
-	source := []byte(`# 黎智林
+	source := []byte(`# 李志林
 
 后端工程师，专注 Go 服务开发。
 
@@ -22,7 +22,7 @@ func TestParsePreservesHeadingContextAndListItems(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse Markdown: %v", err)
 	}
-	if result.Metadata.Title != "黎智林" {
+	if result.Metadata.Title != "李志林" {
 		t.Fatalf("unexpected title %q", result.Metadata.Title)
 	}
 	if len(result.Chunks) != 4 {
@@ -33,13 +33,13 @@ func TestParsePreservesHeadingContextAndListItems(t *testing.T) {
 		t.Fatalf("unexpected first chunk %q", result.Chunks[0].Text)
 	}
 	if len(result.Chunks[0].Locator.HeadingPath) != 1 ||
-		result.Chunks[0].Locator.HeadingPath[0] != "黎智林" {
+		result.Chunks[0].Locator.HeadingPath[0] != "李志林" {
 		t.Fatalf("unexpected first heading path %#v", result.Chunks[0].Locator.HeadingPath)
 	}
 	if result.Chunks[2].Kind != "list_item" {
 		t.Fatalf("expected list item chunk, got %q", result.Chunks[2].Kind)
 	}
-	if strings.Join(result.Chunks[2].Locator.HeadingPath, "/") != "黎智林/工作经历" {
+	if strings.Join(result.Chunks[2].Locator.HeadingPath, "/") != "李志林/工作经历" {
 		t.Fatalf("unexpected list heading path %#v", result.Chunks[2].Locator.HeadingPath)
 	}
 }
