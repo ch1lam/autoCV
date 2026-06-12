@@ -84,6 +84,67 @@ func (store *ManagedFiles) SaveMarkdown(
 	return filepath.ToSlash(relativePath), nil
 }
 
+func (store *ManagedFiles) SaveArtifact(
+	runID string,
+	artifactID string,
+	extension string,
+	contents []byte,
+) (string, error) {
+	if err := validatePathID(runID); err != nil {
+		return "", fmt.Errorf("invalid run id: %w", err)
+	}
+	if err := validatePathID(artifactID); err != nil {
+		return "", fmt.Errorf("invalid artifact id: %w", err)
+	}
+	extension = strings.TrimPrefix(strings.ToLower(extension), ".")
+	if extension != "pdf" && extension != "png" {
+		return "", fmt.Errorf("unsupported artifact extension %q", extension)
+	}
+
+	relativePath := filepath.Join(
+		"runs",
+		runID,
+		"artifacts",
+		artifactID+"."+extension,
+	)
+	absolutePath, err := store.resolve(relativePath)
+	if err != nil {
+		return "", err
+	}
+	if err := writeAtomically(absolutePath, contents); err != nil {
+		return "", fmt.Errorf("save artifact: %w", err)
+	}
+	return filepath.ToSlash(relativePath), nil
+}
+
+func (store *ManagedFiles) ReadArtifact(relativePath string) ([]byte, error) {
+	return store.Read(relativePath)
+}
+
+func (store *ManagedFiles) ExportArtifact(
+	relativePath string,
+	destination string,
+) error {
+	contents, err := store.Read(relativePath)
+	if err != nil {
+		return err
+	}
+	return store.ExportContents(contents, destination)
+}
+
+func (store *ManagedFiles) ExportContents(
+	contents []byte,
+	destination string,
+) error {
+	if !filepath.IsAbs(destination) {
+		return errors.New("export destination must be absolute")
+	}
+	if err := writeAtomically(destination, contents); err != nil {
+		return fmt.Errorf("export file: %w", err)
+	}
+	return nil
+}
+
 func (store *ManagedFiles) Read(relativePath string) ([]byte, error) {
 	absolutePath, err := store.resolve(relativePath)
 	if err != nil {
@@ -94,6 +155,38 @@ func (store *ManagedFiles) Read(relativePath string) ([]byte, error) {
 		return nil, fmt.Errorf("read managed file: %w", err)
 	}
 	return contents, nil
+}
+
+func writeAtomically(path string, contents []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("create destination directory: %w", err)
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".autocv-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temporary file: %w", err)
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+
+	if err := temporary.Chmod(0o600); err != nil {
+		temporary.Close()
+		return fmt.Errorf("set file permissions: %w", err)
+	}
+	if _, err := temporary.Write(contents); err != nil {
+		temporary.Close()
+		return fmt.Errorf("write temporary file: %w", err)
+	}
+	if err := temporary.Sync(); err != nil {
+		temporary.Close()
+		return fmt.Errorf("sync temporary file: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("close temporary file: %w", err)
+	}
+	if err := os.Rename(temporaryPath, path); err != nil {
+		return fmt.Errorf("replace destination file: %w", err)
+	}
+	return nil
 }
 
 func (store *ManagedFiles) Delete(relativePath string) error {
@@ -148,3 +241,4 @@ func validatePathID(value string) error {
 }
 
 var _ ports.ManagedFileStore = (*ManagedFiles)(nil)
+var _ ports.ArtifactStore = (*ManagedFiles)(nil)

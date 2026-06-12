@@ -81,3 +81,37 @@ func TestManagedFilesRejectsUnsafeIDs(t *testing.T) {
 		t.Fatal("expected unsafe document id error")
 	}
 }
+
+func TestManagedFilesSavesAndExportsArtifactAtomically(t *testing.T) {
+	root := t.TempDir()
+	store, err := NewManagedFiles(root)
+	if err != nil {
+		t.Fatalf("create managed file store: %v", err)
+	}
+	contents := []byte("%PDF-1.7\nsynthetic")
+
+	managedPath, err := store.SaveArtifact(
+		"run-1",
+		"artifact-1",
+		"pdf",
+		contents,
+	)
+	if err != nil {
+		t.Fatalf("save artifact: %v", err)
+	}
+	if managedPath != "runs/run-1/artifacts/artifact-1.pdf" {
+		t.Fatalf("unexpected artifact path %q", managedPath)
+	}
+
+	exportPath := filepath.Join(t.TempDir(), "resume.pdf")
+	if err := store.ExportArtifact(managedPath, exportPath); err != nil {
+		t.Fatalf("export artifact: %v", err)
+	}
+	exported, err := os.ReadFile(exportPath)
+	if err != nil {
+		t.Fatalf("read exported artifact: %v", err)
+	}
+	if string(exported) != string(contents) {
+		t.Fatal("exported artifact differs from managed artifact")
+	}
+}

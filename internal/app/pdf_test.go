@@ -1,0 +1,232 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/ch1lam/autocv/internal/adapters/fakeprovider"
+	"github.com/ch1lam/autocv/internal/adapters/filesystem"
+	sqliteadapter "github.com/ch1lam/autocv/internal/adapters/sqlite"
+	"github.com/ch1lam/autocv/internal/domain"
+	"github.com/ch1lam/autocv/internal/ports"
+)
+
+type memoryArtifactRepository struct {
+	artifact domain.Artifact
+	found    bool
+}
+
+func (repository *memoryArtifactRepository) GetLatest(
+	_ context.Context,
+	runID string,
+	kind domain.ArtifactKind,
+) (domain.Artifact, bool, error) {
+	if !repository.found ||
+		repository.artifact.RunID != runID ||
+		repository.artifact.Kind != kind {
+		return domain.Artifact{}, false, nil
+	}
+	return repository.artifact, true, nil
+}
+
+func (repository *memoryArtifactRepository) Save(
+	_ context.Context,
+	artifact domain.Artifact,
+) error {
+	repository.artifact = artifact
+	repository.found = true
+	return nil
+}
+
+type sequentialRenderer struct {
+	calls int
+}
+
+func (renderer *sequentialRenderer) Render(
+	_ context.Context,
+	_ domain.Resume,
+) (ports.RenderedResume, error) {
+	renderer.calls++
+	if renderer.calls > 1 {
+		return ports.RenderedResume{}, errors.New("synthetic Typst failure")
+	}
+	return ports.RenderedResume{
+		PDF:          []byte("%PDF-1.7\nsynthetic"),
+		PreviewPages: [][]byte{[]byte("\x89PNG\r\nsynthetic")},
+	}, nil
+}
+
+type fixedExportPicker struct {
+	pdfPath      string
+	markdownPath string
+}
+
+func (picker fixedExportPicker) PickPDF(string) (string, bool, error) {
+	return picker.pdfPath, picker.pdfPath != "", nil
+}
+
+func (picker fixedExportPicker) PickMarkdown(string) (string, bool, error) {
+	return picker.markdownPath, picker.markdownPath != "", nil
+}
+
+type ungroundedResumeDrafter struct{}
+
+func (ungroundedResumeDrafter) DraftResume(
+	_ context.Context,
+	request ports.DraftResumeRequest,
+) (domain.ResumeDraft, error) {
+	return domain.ResumeDraft{
+		Language:   request.Language,
+		TargetRole: request.TargetRole,
+		Blocks: []domain.ResumeBlockDraft{{
+			Kind:           domain.ResumeBlockSummary,
+			Content:        "适合承担目标岗位相关职责。",
+			GroundingLevel: domain.GroundingDerived,
+			Optimization:   "待用户确认的岗位定位。",
+		}},
+		OptimizationNotes: []string{"存在待确认内容。"},
+	}, nil
+}
+
+func TestPDFServicePreservesLastArtifactWhenRenderingFails(t *testing.T) {
+	resumes := newResumeServiceFixture(t)
+	generated, err := resumes.Generate("zh", 0.5)
+	if err != nil {
+		t.Fatalf("generate resume: %v", err)
+	}
+	store, err := filesystem.NewManagedFiles(t.TempDir())
+	if err != nil {
+		t.Fatalf("create artifact store: %v", err)
+	}
+	artifacts := &memoryArtifactRepository{}
+	renderer := &sequentialRenderer{}
+	service := NewPDFService(
+		resumes,
+		artifacts,
+		store,
+		renderer,
+		fixedExportPicker{},
+		fixedClock{now: profileTestTime.Add(3 * time.Hour)},
+	)
+
+	rendered, err := service.Render()
+	if err != nil {
+		t.Fatalf("render PDF: %v", err)
+	}
+	if rendered.Status != "ready" || !rendered.CanExport ||
+		rendered.ResumeID != generated.ResumeID {
+		t.Fatalf("unexpected rendered workspace %#v", rendered)
+	}
+	artifactID := rendered.ArtifactID
+
+	if _, err := service.Render(); err == nil {
+		t.Fatal("expected second render to fail")
+	}
+	restored, err := service.GetWorkspace()
+	if err != nil {
+		t.Fatalf("restore PDF workspace: %v", err)
+	}
+	if restored.ArtifactID != artifactID || restored.Status != "ready" {
+		t.Fatalf("expected previous artifact to survive, got %#v", restored)
+	}
+}
+
+func TestPDFServiceExportsCurrentArtifactAndMarkdown(t *testing.T) {
+	resumes := newResumeServiceFixture(t)
+	if _, err := resumes.Generate("en", 0.5); err != nil {
+		t.Fatalf("generate resume: %v", err)
+	}
+	root := t.TempDir()
+	store, err := filesystem.NewManagedFiles(root)
+	if err != nil {
+		t.Fatalf("create artifact store: %v", err)
+	}
+	pdfPath := filepath.Join(t.TempDir(), "resume")
+	markdownPath := filepath.Join(t.TempDir(), "resume")
+	service := NewPDFService(
+		resumes,
+		&memoryArtifactRepository{},
+		store,
+		&sequentialRenderer{},
+		fixedExportPicker{
+			pdfPath:      pdfPath,
+			markdownPath: markdownPath,
+		},
+		fixedClock{now: time.Date(2026, 6, 12, 8, 0, 0, 0, time.UTC)},
+	)
+	if _, err := service.Render(); err != nil {
+		t.Fatalf("render PDF: %v", err)
+	}
+
+	pdfResult, err := service.ExportPDF()
+	if err != nil {
+		t.Fatalf("export PDF: %v", err)
+	}
+	if pdfResult.Path != pdfPath+".pdf" {
+		t.Fatalf("unexpected PDF export path %q", pdfResult.Path)
+	}
+	markdownResult, err := service.ExportMarkdown()
+	if err != nil {
+		t.Fatalf("export Markdown: %v", err)
+	}
+	if markdownResult.Path != markdownPath+".md" {
+		t.Fatalf("unexpected Markdown export path %q", markdownResult.Path)
+	}
+}
+
+func TestPDFServiceBlocksExportForUnconfirmedContent(t *testing.T) {
+	matchFixture := newMatchServiceFixture(t, fakeprovider.New())
+	matchFixture.importProfile(t)
+	matchFixture.analyzeJD(t, matchFixture.jdText)
+	if _, err := matchFixture.service.Analyze(); err != nil {
+		t.Fatalf("analyze matches: %v", err)
+	}
+	resumes := NewResumeService(
+		sqliteadapter.NewResumeRepository(matchFixture.db),
+		matchFixture.matchRepository,
+		matchFixture.profileRepository,
+		matchFixture.jdRepository,
+		ungroundedResumeDrafter{},
+		fixedClock{now: profileTestTime.Add(2 * time.Hour)},
+	)
+	generated, err := resumes.Generate("zh", 0.5)
+	if err != nil {
+		t.Fatalf("generate reviewable resume: %v", err)
+	}
+	if generated.CanExport || len(generated.ExportIssues) != 1 {
+		t.Fatalf("expected export gate, got %#v", generated)
+	}
+
+	service := NewPDFService(
+		resumes,
+		&memoryArtifactRepository{},
+		matchFixture.files,
+		&sequentialRenderer{},
+		fixedExportPicker{
+			pdfPath:      filepath.Join(t.TempDir(), "resume.pdf"),
+			markdownPath: filepath.Join(t.TempDir(), "resume.md"),
+		},
+		fixedClock{now: profileTestTime.Add(3 * time.Hour)},
+	)
+	workspace, err := service.Render()
+	if err != nil {
+		t.Fatalf("render review PDF: %v", err)
+	}
+	if workspace.CanExport || len(workspace.ExportIssues) != 1 {
+		t.Fatalf("expected preview-only PDF workspace, got %#v", workspace)
+	}
+	if _, err := service.ExportPDF(); err == nil ||
+		!strings.Contains(err.Error(), "export blocked") {
+		t.Fatalf("expected PDF export block, got %v", err)
+	}
+	if _, err := service.ExportMarkdown(); err == nil ||
+		!strings.Contains(err.Error(), "export blocked") {
+		t.Fatalf("expected Markdown export block, got %v", err)
+	}
+}
+
+var _ ports.ResumeDrafter = ungroundedResumeDrafter{}
