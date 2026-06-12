@@ -1,0 +1,617 @@
+package app
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"strings"
+
+	"github.com/ch1lam/autocv/internal/domain"
+	"github.com/ch1lam/autocv/internal/ports"
+	"github.com/google/uuid"
+)
+
+const defaultMatchAnalysisErr = "match analysis failed"
+
+type MatchService struct {
+	matchRepository   ports.MatchRepository
+	profileRepository ports.ProfileRepository
+	jdRepository      ports.JDRepository
+	suggester         ports.MatchSuggester
+	clock             ports.Clock
+}
+
+type MatchReview struct {
+	Status         string                    `json:"status"`
+	Message        string                    `json:"message"`
+	Error          string                    `json:"error"`
+	JDTitle        string                    `json:"jdTitle"`
+	Company        string                    `json:"company"`
+	TotalScore     int                       `json:"totalScore"`
+	HardCapApplied bool                      `json:"hardCapApplied"`
+	UpdatedAt      string                    `json:"updatedAt"`
+	Counts         MatchCounts               `json:"counts"`
+	Dimensions     []MatchDimensionSummary   `json:"dimensions"`
+	Requirements   []RequirementMatchSummary `json:"requirements"`
+}
+
+type MatchCounts struct {
+	Strong  int `json:"strong"`
+	Partial int `json:"partial"`
+	Missing int `json:"missing"`
+	Unknown int `json:"unknown"`
+}
+
+type MatchDimensionSummary struct {
+	Category         string  `json:"category"`
+	Label            string  `json:"label"`
+	Weight           int     `json:"weight"`
+	Earned           float64 `json:"earned"`
+	RequirementCount int     `json:"requirementCount"`
+}
+
+type RequirementMatchSummary struct {
+	ID                  string                 `json:"id"`
+	Category            string                 `json:"category"`
+	Group               string                 `json:"group"`
+	Text                string                 `json:"text"`
+	Importance          int                    `json:"importance"`
+	HardConstraint      bool                   `json:"hardConstraint"`
+	Strength            string                 `json:"strength"`
+	Explanation         string                 `json:"explanation"`
+	ClarificationNeeded bool                   `json:"clarificationNeeded"`
+	Evidence            []MatchEvidenceSummary `json:"evidence"`
+}
+
+type MatchEvidenceSummary struct {
+	ID      string                       `json:"id"`
+	Kind    string                       `json:"kind"`
+	Title   string                       `json:"title"`
+	Content string                       `json:"content"`
+	Sources []MatchEvidenceSourceSummary `json:"sources"`
+}
+
+type MatchEvidenceSourceSummary struct {
+	ChunkID      string `json:"chunkId"`
+	DocumentID   string `json:"documentId"`
+	DocumentName string `json:"documentName"`
+	ChunkText    string `json:"chunkText"`
+	LocatorJSON  string `json:"locatorJson"`
+	QuoteStart   int    `json:"quoteStart"`
+	QuoteEnd     int    `json:"quoteEnd"`
+}
+
+type preparedMatchInput struct {
+	profile      domain.Profile
+	jd           domain.JobDescription
+	requirements []domain.MatchRequirement
+	evidence     []domain.Evidence
+	inputHash    string
+}
+
+func NewMatchService(
+	matchRepository ports.MatchRepository,
+	profileRepository ports.ProfileRepository,
+	jdRepository ports.JDRepository,
+	suggester ports.MatchSuggester,
+	clock ports.Clock,
+) *MatchService {
+	return &MatchService{
+		matchRepository:   matchRepository,
+		profileRepository: profileRepository,
+		jdRepository:      jdRepository,
+		suggester:         suggester,
+		clock:             clock,
+	}
+}
+
+func (service *MatchService) GetReview() (MatchReview, error) {
+	return service.getReview(context.Background())
+}
+
+func (service *MatchService) Analyze() (MatchReview, error) {
+	ctx := context.Background()
+	input, blocked, err := service.prepareInput(ctx)
+	if err != nil {
+		return MatchReview{}, err
+	}
+	if blocked.Status != "" {
+		return blocked, nil
+	}
+
+	suggestions, err := service.suggester.SuggestMatches(
+		ctx,
+		ports.SuggestMatchesRequest{
+			Requirements: input.requirements,
+			Evidence:     input.evidence,
+		},
+	)
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return MatchReview{}, fmt.Errorf("suggest matches: %w", err)
+		}
+		service.saveFailure(ctx, input, err)
+		return MatchReview{}, fmt.Errorf("suggest matches: %w", err)
+	}
+	if err := domain.ValidateMatchSuggestions(
+		input.requirements,
+		input.evidence,
+		suggestions,
+	); err != nil {
+		service.saveFailure(ctx, input, err)
+		return MatchReview{}, fmt.Errorf("validate match suggestions: %w", err)
+	}
+	score, err := domain.CalculateMatchScore(input.requirements, suggestions)
+	if err != nil {
+		service.saveFailure(ctx, input, err)
+		return MatchReview{}, fmt.Errorf("calculate match score: %w", err)
+	}
+
+	now := service.clock.Now().UTC()
+	analysis := domain.MatchAnalysis{
+		ID:           matchAnalysisID(input.profile.ID, input.jd.ID),
+		ProfileID:    input.profile.ID,
+		JDID:         input.jd.ID,
+		InputHash:    input.inputHash,
+		Status:       "succeeded",
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		Requirements: input.requirements,
+		Suggestions:  suggestions,
+	}
+	if existing, found, getErr := service.matchRepository.GetLatest(
+		ctx,
+		input.profile.ID,
+		input.jd.ID,
+	); getErr != nil {
+		return MatchReview{}, getErr
+	} else if found {
+		analysis.CreatedAt = existing.CreatedAt
+	}
+	if err := service.matchRepository.Save(ctx, analysis); err != nil {
+		return MatchReview{}, err
+	}
+
+	slog.Info(
+		"match.analysis.succeeded",
+		slog.String("analysis_id", analysis.ID),
+		slog.String("input_hash", analysis.InputHash),
+		slog.Int("requirement_count", len(analysis.Requirements)),
+		slog.Int("score", score.Total),
+	)
+	return matchReviewFromAnalysis(analysis, input, score), nil
+}
+
+func (service *MatchService) getReview(
+	ctx context.Context,
+) (MatchReview, error) {
+	input, blocked, err := service.prepareInput(ctx)
+	if err != nil {
+		return MatchReview{}, err
+	}
+	if blocked.Status != "" {
+		return blocked, nil
+	}
+
+	analysis, found, err := service.matchRepository.GetLatest(
+		ctx,
+		input.profile.ID,
+		input.jd.ID,
+	)
+	if err != nil {
+		return MatchReview{}, err
+	}
+	if !found {
+		return emptyMatchReview(
+			"pending",
+			input.jd,
+			"资料和 JD 已就绪，可以开始建立证据关联。",
+		), nil
+	}
+	if analysis.InputHash != input.inputHash {
+		return emptyMatchReview(
+			"stale",
+			input.jd,
+			"资料或 JD 已变化，旧匹配结果已失效。",
+		), nil
+	}
+	if analysis.Status == "failed" {
+		review := emptyMatchReview(
+			"failed",
+			input.jd,
+			"上一次匹配分析未完成。",
+		)
+		review.Error = analysis.Error
+		review.UpdatedAt = analysis.UpdatedAt.UTC().Format(timeFormat)
+		return review, nil
+	}
+	if err := domain.ValidateMatchSuggestions(
+		analysis.Requirements,
+		input.evidence,
+		analysis.Suggestions,
+	); err != nil {
+		return MatchReview{}, fmt.Errorf(
+			"validate stored match analysis: %w",
+			err,
+		)
+	}
+	score, err := domain.CalculateMatchScore(
+		analysis.Requirements,
+		analysis.Suggestions,
+	)
+	if err != nil {
+		return MatchReview{}, err
+	}
+	return matchReviewFromAnalysis(analysis, input, score), nil
+}
+
+func (service *MatchService) prepareInput(
+	ctx context.Context,
+) (preparedMatchInput, MatchReview, error) {
+	profile, err := service.profileRepository.EnsureDefaultProfile(
+		ctx,
+		defaultProfileName,
+		defaultProfileLanguage,
+		service.clock.Now(),
+	)
+	if err != nil {
+		return preparedMatchInput{}, MatchReview{}, err
+	}
+	jd, found, err := service.jdRepository.GetLatest(ctx)
+	if err != nil {
+		return preparedMatchInput{}, MatchReview{}, err
+	}
+	if !found {
+		return preparedMatchInput{}, MatchReview{
+			Status:  "blocked",
+			Message: "请先在 JD 工作区粘贴并分析目标岗位。",
+		}, nil
+	}
+	if jd.AnalysisStatus != "succeeded" || jd.AnalysisJSON == "" {
+		return preparedMatchInput{}, emptyMatchReview(
+			"blocked",
+			jd,
+			"请先完成当前 JD 的结构化分析。",
+		), nil
+	}
+	analysis, err := domain.DecodeJDAnalysis([]byte(jd.AnalysisJSON))
+	if err != nil {
+		return preparedMatchInput{}, MatchReview{}, fmt.Errorf(
+			"decode JD analysis for matching: %w",
+			err,
+		)
+	}
+	requirements, err := buildMatchRequirements(analysis)
+	if err != nil {
+		return preparedMatchInput{}, MatchReview{}, err
+	}
+	evidence, err := service.profileRepository.ListEvidence(ctx, profile.ID)
+	if err != nil {
+		return preparedMatchInput{}, MatchReview{}, err
+	}
+	if len(evidence) == 0 {
+		return preparedMatchInput{}, emptyMatchReview(
+			"blocked",
+			jd,
+			"请先导入 Markdown 职业资料，生成可追溯 Evidence。",
+		), nil
+	}
+	inputHash, err := hashMatchInput(jd, requirements, evidence)
+	if err != nil {
+		return preparedMatchInput{}, MatchReview{}, err
+	}
+	return preparedMatchInput{
+		profile:      profile,
+		jd:           jd,
+		requirements: requirements,
+		evidence:     evidence,
+		inputHash:    inputHash,
+	}, MatchReview{}, nil
+}
+
+func (service *MatchService) saveFailure(
+	ctx context.Context,
+	input preparedMatchInput,
+	matchErr error,
+) {
+	message := defaultMatchAnalysisErr
+	if matchErr != nil {
+		message = matchErr.Error()
+	}
+	now := service.clock.Now().UTC()
+	analysis := domain.MatchAnalysis{
+		ID:           matchAnalysisID(input.profile.ID, input.jd.ID),
+		ProfileID:    input.profile.ID,
+		JDID:         input.jd.ID,
+		InputHash:    input.inputHash,
+		Status:       "failed",
+		Error:        message,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		Requirements: input.requirements,
+	}
+	if existing, found, err := service.matchRepository.GetLatest(
+		ctx,
+		input.profile.ID,
+		input.jd.ID,
+	); err == nil && found {
+		analysis.CreatedAt = existing.CreatedAt
+	}
+	if err := service.matchRepository.Save(ctx, analysis); err != nil {
+		slog.Error(
+			"match.analysis.failure.persist.failed",
+			slog.String("analysis_id", analysis.ID),
+			slog.Any("error", err),
+		)
+	}
+}
+
+func buildMatchRequirements(
+	analysis domain.JDAnalysis,
+) ([]domain.MatchRequirement, error) {
+	requirements := make([]domain.MatchRequirement, 0)
+	seen := make(map[string]struct{})
+	appendRequirement := func(requirement domain.MatchRequirement) error {
+		if _, exists := seen[requirement.ID]; exists {
+			return fmt.Errorf(
+				"duplicate match requirement id %q",
+				requirement.ID,
+			)
+		}
+		requirement.Ordinal = len(requirements)
+		seen[requirement.ID] = struct{}{}
+		requirements = append(requirements, requirement)
+		return nil
+	}
+
+	for _, requirement := range analysis.RequiredSkills {
+		if err := appendRequirement(domain.MatchRequirement{
+			ID:             requirement.ID,
+			Category:       domain.RequirementCategoryRequired,
+			Text:           requirement.Text,
+			Importance:     requirement.Importance,
+			HardConstraint: requirement.HardConstraint,
+		}); err != nil {
+			return nil, err
+		}
+	}
+	for _, constraint := range analysis.ScreeningConstraints {
+		constraint = strings.TrimSpace(constraint)
+		if constraint == "" {
+			continue
+		}
+		if err := appendRequirement(domain.MatchRequirement{
+			ID:             derivedRequirementID("screening", constraint),
+			Category:       domain.RequirementCategoryRequired,
+			Text:           constraint,
+			Importance:     5,
+			HardConstraint: true,
+		}); err != nil {
+			return nil, err
+		}
+	}
+	for _, requirement := range analysis.Responsibilities {
+		if err := appendRequirement(domain.MatchRequirement{
+			ID:             requirement.ID,
+			Category:       domain.RequirementCategoryResponsibility,
+			Text:           requirement.Text,
+			Importance:     requirement.Importance,
+			HardConstraint: requirement.HardConstraint,
+		}); err != nil {
+			return nil, err
+		}
+	}
+	if analysis.Level != nil && strings.TrimSpace(*analysis.Level) != "" {
+		level := strings.TrimSpace(*analysis.Level)
+		if err := appendRequirement(domain.MatchRequirement{
+			ID:         derivedRequirementID("level", level),
+			Category:   domain.RequirementCategoryLevel,
+			Text:       level,
+			Importance: 3,
+		}); err != nil {
+			return nil, err
+		}
+	}
+	for _, signal := range analysis.DomainSignals {
+		signal = strings.TrimSpace(signal)
+		if signal == "" {
+			continue
+		}
+		if err := appendRequirement(domain.MatchRequirement{
+			ID:         derivedRequirementID("domain", signal),
+			Category:   domain.RequirementCategoryDomain,
+			Text:       signal,
+			Importance: 3,
+		}); err != nil {
+			return nil, err
+		}
+	}
+	for _, requirement := range analysis.PreferredSkills {
+		if err := appendRequirement(domain.MatchRequirement{
+			ID:             requirement.ID,
+			Category:       domain.RequirementCategoryPreferred,
+			Text:           requirement.Text,
+			Importance:     requirement.Importance,
+			HardConstraint: requirement.HardConstraint,
+		}); err != nil {
+			return nil, err
+		}
+	}
+	if len(requirements) == 0 {
+		return nil, errors.New("JD analysis has no matchable requirements")
+	}
+	return requirements, nil
+}
+
+func hashMatchInput(
+	jd domain.JobDescription,
+	requirements []domain.MatchRequirement,
+	evidence []domain.Evidence,
+) (string, error) {
+	contents, err := json.Marshal(struct {
+		JDRawHash    string
+		Requirements []domain.MatchRequirement
+		Evidence     []domain.Evidence
+	}{
+		JDRawHash:    jd.RawHash,
+		Requirements: requirements,
+		Evidence:     evidence,
+	})
+	if err != nil {
+		return "", fmt.Errorf("encode match input: %w", err)
+	}
+	digest := sha256.Sum256(contents)
+	return hex.EncodeToString(digest[:]), nil
+}
+
+func matchReviewFromAnalysis(
+	analysis domain.MatchAnalysis,
+	input preparedMatchInput,
+	score domain.MatchScore,
+) MatchReview {
+	evidenceByID := make(map[string]domain.Evidence, len(input.evidence))
+	for _, item := range input.evidence {
+		evidenceByID[item.ID] = item
+	}
+	suggestionsByID := make(
+		map[string]domain.MatchSuggestion,
+		len(analysis.Suggestions),
+	)
+	for _, suggestion := range analysis.Suggestions {
+		suggestionsByID[suggestion.RequirementID] = suggestion
+	}
+
+	review := MatchReview{
+		Status:         "ready",
+		Message:        "匹配分只表示当前资料与 JD 的证据覆盖度。",
+		JDTitle:        input.jd.Title,
+		Company:        input.jd.Company,
+		TotalScore:     score.Total,
+		HardCapApplied: score.HardCapApplied,
+		UpdatedAt:      analysis.UpdatedAt.UTC().Format(timeFormat),
+		Dimensions:     make([]MatchDimensionSummary, 0, len(score.Dimensions)),
+		Requirements:   make([]RequirementMatchSummary, 0, len(analysis.Requirements)),
+	}
+	for _, dimension := range score.Dimensions {
+		review.Dimensions = append(
+			review.Dimensions,
+			MatchDimensionSummary{
+				Category:         string(dimension.Category),
+				Label:            matchCategoryLabel(dimension.Category),
+				Weight:           dimension.Weight,
+				Earned:           dimension.Earned,
+				RequirementCount: dimension.RequirementCount,
+			},
+		)
+	}
+	for _, requirement := range analysis.Requirements {
+		suggestion := suggestionsByID[requirement.ID]
+		summary := RequirementMatchSummary{
+			ID:                  requirement.ID,
+			Category:            string(requirement.Category),
+			Group:               matchCategoryLabel(requirement.Category),
+			Text:                requirement.Text,
+			Importance:          requirement.Importance,
+			HardConstraint:      requirement.HardConstraint,
+			Strength:            string(suggestion.Strength),
+			Explanation:         suggestion.Explanation,
+			ClarificationNeeded: suggestion.ClarificationNeeded,
+			Evidence:            make([]MatchEvidenceSummary, 0, len(suggestion.EvidenceIDs)),
+		}
+		for _, evidenceID := range suggestion.EvidenceIDs {
+			if item, exists := evidenceByID[evidenceID]; exists {
+				summary.Evidence = append(
+					summary.Evidence,
+					matchEvidenceSummary(item),
+				)
+			}
+		}
+		switch suggestion.Strength {
+		case domain.MatchStrengthStrong:
+			review.Counts.Strong++
+		case domain.MatchStrengthPartial:
+			review.Counts.Partial++
+		case domain.MatchStrengthMissing:
+			review.Counts.Missing++
+		case domain.MatchStrengthUnknown:
+			review.Counts.Unknown++
+		}
+		review.Requirements = append(review.Requirements, summary)
+	}
+	return review
+}
+
+func matchEvidenceSummary(item domain.Evidence) MatchEvidenceSummary {
+	summary := MatchEvidenceSummary{
+		ID:      item.ID,
+		Kind:    item.Kind,
+		Title:   item.Title,
+		Content: item.Content,
+		Sources: make([]MatchEvidenceSourceSummary, 0, len(item.Sources)),
+	}
+	for _, source := range item.Sources {
+		summary.Sources = append(
+			summary.Sources,
+			MatchEvidenceSourceSummary{
+				ChunkID:      source.ChunkID,
+				DocumentID:   source.DocumentID,
+				DocumentName: source.DocumentName,
+				ChunkText:    source.ChunkText,
+				LocatorJSON:  source.LocatorJSON,
+				QuoteStart:   source.QuoteStart,
+				QuoteEnd:     source.QuoteEnd,
+			},
+		)
+	}
+	return summary
+}
+
+func emptyMatchReview(
+	status string,
+	jd domain.JobDescription,
+	message string,
+) MatchReview {
+	return MatchReview{
+		Status:       status,
+		Message:      message,
+		JDTitle:      jd.Title,
+		Company:      jd.Company,
+		Dimensions:   make([]MatchDimensionSummary, 0),
+		Requirements: make([]RequirementMatchSummary, 0),
+	}
+}
+
+func matchCategoryLabel(category domain.RequirementCategory) string {
+	switch category {
+	case domain.RequirementCategoryRequired:
+		return "必要技能与硬性条件"
+	case domain.RequirementCategoryResponsibility:
+		return "主要职责证据"
+	case domain.RequirementCategoryLevel:
+		return "岗位级别与责任范围"
+	case domain.RequirementCategoryDomain:
+		return "领域与业务经验"
+	case domain.RequirementCategoryPreferred:
+		return "加分项"
+	default:
+		return string(category)
+	}
+}
+
+func derivedRequirementID(kind string, value string) string {
+	return "derived-" + kind + "-" + uuid.NewSHA1(
+		uuid.NameSpaceURL,
+		[]byte(kind+":"+value),
+	).String()
+}
+
+func matchAnalysisID(profileID string, jdID string) string {
+	return uuid.NewSHA1(
+		uuid.NameSpaceURL,
+		[]byte("https://autocv.local/matches/"+profileID+"/"+jdID),
+	).String()
+}

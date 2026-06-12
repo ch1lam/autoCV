@@ -203,10 +203,11 @@ func (repository *ProfileRepository) ListEvidence(
 		`SELECT e.id, e.profile_id, e.kind, e.title, e.content,
 		        e.confidence, e.user_verified, e.created_at, e.updated_at,
 		        es.chunk_id, es.quote_start, es.quote_end,
-		        sc.document_id, sc.text, sc.locator_json
+		        sc.document_id, sd.original_name, sc.text, sc.locator_json
 		   FROM evidence e
 		   LEFT JOIN evidence_sources es ON es.evidence_id = e.id
 		   LEFT JOIN source_chunks sc ON sc.id = es.chunk_id
+		   LEFT JOIN source_documents sd ON sd.id = sc.document_id
 		  WHERE e.profile_id = ?
 		  ORDER BY e.created_at, e.id, es.chunk_id`,
 		profileID,
@@ -226,6 +227,7 @@ func (repository *ProfileRepository) ListEvidence(
 		var quoteStart sql.NullInt64
 		var quoteEnd sql.NullInt64
 		var documentID sql.NullString
+		var documentName sql.NullString
 		var chunkText sql.NullString
 		var locatorJSON sql.NullString
 		err := rows.Scan(
@@ -242,6 +244,7 @@ func (repository *ProfileRepository) ListEvidence(
 			&quoteStart,
 			&quoteEnd,
 			&documentID,
+			&documentName,
 			&chunkText,
 			&locatorJSON,
 		)
@@ -267,13 +270,14 @@ func (repository *ProfileRepository) ListEvidence(
 			items[index].Sources = append(
 				items[index].Sources,
 				domain.EvidenceSource{
-					EvidenceID:  item.ID,
-					ChunkID:     chunkID.String,
-					DocumentID:  documentID.String,
-					ChunkText:   chunkText.String,
-					LocatorJSON: locatorJSON.String,
-					QuoteStart:  int(quoteStart.Int64),
-					QuoteEnd:    int(quoteEnd.Int64),
+					EvidenceID:   item.ID,
+					ChunkID:      chunkID.String,
+					DocumentID:   documentID.String,
+					DocumentName: documentName.String,
+					ChunkText:    chunkText.String,
+					LocatorJSON:  locatorJSON.String,
+					QuoteStart:   int(quoteStart.Int64),
+					QuoteEnd:     int(quoteEnd.Int64),
 				},
 			)
 		}

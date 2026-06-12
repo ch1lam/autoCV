@@ -56,12 +56,13 @@ type EvidenceSummary struct {
 }
 
 type EvidenceSourceSummary struct {
-	ChunkID     string `json:"chunkId"`
-	DocumentID  string `json:"documentId"`
-	ChunkText   string `json:"chunkText"`
-	LocatorJSON string `json:"locatorJson"`
-	QuoteStart  int    `json:"quoteStart"`
-	QuoteEnd    int    `json:"quoteEnd"`
+	ChunkID      string `json:"chunkId"`
+	DocumentID   string `json:"documentId"`
+	DocumentName string `json:"documentName"`
+	ChunkText    string `json:"chunkText"`
+	LocatorJSON  string `json:"locatorJson"`
+	QuoteStart   int    `json:"quoteStart"`
+	QuoteEnd     int    `json:"quoteEnd"`
 }
 
 type ImportMarkdownResult struct {
@@ -367,12 +368,13 @@ func evidenceSummary(item domain.Evidence) EvidenceSummary {
 	}
 	for _, source := range item.Sources {
 		summary.Sources = append(summary.Sources, EvidenceSourceSummary{
-			ChunkID:     source.ChunkID,
-			DocumentID:  source.DocumentID,
-			ChunkText:   source.ChunkText,
-			LocatorJSON: source.LocatorJSON,
-			QuoteStart:  source.QuoteStart,
-			QuoteEnd:    source.QuoteEnd,
+			ChunkID:      source.ChunkID,
+			DocumentID:   source.DocumentID,
+			DocumentName: source.DocumentName,
+			ChunkText:    source.ChunkText,
+			LocatorJSON:  source.LocatorJSON,
+			QuoteStart:   source.QuoteStart,
+			QuoteEnd:     source.QuoteEnd,
 		})
 	}
 	return summary

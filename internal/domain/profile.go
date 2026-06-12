@@ -44,11 +44,12 @@ type Evidence struct {
 }
 
 type EvidenceSource struct {
-	EvidenceID  string
-	ChunkID     string
-	DocumentID  string
-	ChunkText   string
-	LocatorJSON string
-	QuoteStart  int
-	QuoteEnd    int
+	EvidenceID   string
+	ChunkID      string
+	DocumentID   string
+	DocumentName string
+	ChunkText    string
+	LocatorJSON  string
+	QuoteStart   int
+	QuoteEnd     int
 }
