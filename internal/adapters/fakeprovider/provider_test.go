@@ -42,6 +42,43 @@ func TestAnalyzeJDReturnsFixedValidatedFixture(t *testing.T) {
 	}
 }
 
+func TestAnalyzeJDSelectsLanguageSpecificFixture(t *testing.T) {
+	tests := []struct {
+		name         string
+		languageHint domain.JDLanguage
+		expectedRole string
+	}{
+		{
+			name:         "Chinese",
+			languageHint: domain.JDLanguageChinese,
+			expectedRole: "高级后端工程师",
+		},
+		{
+			name:         "English",
+			languageHint: domain.JDLanguageEnglish,
+			expectedRole: "Senior Backend Engineer",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			analysis, err := New().AnalyzeJD(
+				context.Background(),
+				ports.AnalyzeJDRequest{
+					Text:         "Synthetic job description",
+					LanguageHint: test.languageHint,
+				},
+			)
+			if err != nil {
+				t.Fatalf("analyze language fixture: %v", err)
+			}
+			if analysis.Language != test.languageHint ||
+				analysis.Role != test.expectedRole {
+				t.Fatalf("unexpected analysis %#v", analysis)
+			}
+		})
+	}
+}
+
 func TestAnalyzeJDRejectsEmptyInput(t *testing.T) {
 	_, err := New().AnalyzeJD(context.Background(), ports.AnalyzeJDRequest{})
 	if err == nil {

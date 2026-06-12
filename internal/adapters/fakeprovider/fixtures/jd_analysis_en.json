@@ -1,0 +1,58 @@
+{
+  "role": "Senior Backend Engineer",
+  "company": "Example Technology",
+  "level": "Senior",
+  "language": "en",
+  "responsibilities": [
+    {
+      "id": "responsibility-services",
+      "text": "Design and deliver reliable backend services",
+      "importance": 5,
+      "hard_constraint": false
+    },
+    {
+      "id": "responsibility-performance",
+      "text": "Identify performance bottlenecks and improve service quality",
+      "importance": 4,
+      "hard_constraint": false
+    }
+  ],
+  "required_skills": [
+    {
+      "id": "required-go",
+      "text": "Production experience building services with Go",
+      "importance": 5,
+      "hard_constraint": true
+    },
+    {
+      "id": "required-sql",
+      "text": "Experience with PostgreSQL or another relational database",
+      "importance": 4,
+      "hard_constraint": false
+    },
+    {
+      "id": "required-distributed",
+      "text": "Understanding of distributed systems and service reliability",
+      "importance": 4,
+      "hard_constraint": false
+    }
+  ],
+  "preferred_skills": [
+    {
+      "id": "preferred-messaging",
+      "text": "Experience with message queues and event-driven architecture",
+      "importance": 2,
+      "hard_constraint": false
+    }
+  ],
+  "domain_signals": [
+    "High-concurrency transaction systems",
+    "Service reliability"
+  ],
+  "screening_constraints": [
+    "Able to read English technical documentation"
+  ],
+  "ambiguities": [
+    "Team size and leadership scope are not specified"
+  ]
+}

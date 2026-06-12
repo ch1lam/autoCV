@@ -11,7 +11,7 @@ import (
 	"github.com/ch1lam/autocv/internal/ports"
 )
 
-//go:embed fixtures/jd_analysis.json
+//go:embed fixtures/jd_analysis*.json
 var fixtures embed.FS
 
 type Provider struct{}
@@ -31,7 +31,14 @@ func (provider *Provider) AnalyzeJD(
 		return domain.JDAnalysis{}, errors.New("JD text is empty")
 	}
 
-	contents, err := fixtures.ReadFile("fixtures/jd_analysis.json")
+	fixtureName := "fixtures/jd_analysis.json"
+	switch request.LanguageHint {
+	case domain.JDLanguageChinese:
+		fixtureName = "fixtures/jd_analysis_zh.json"
+	case domain.JDLanguageEnglish:
+		fixtureName = "fixtures/jd_analysis_en.json"
+	}
+	contents, err := fixtures.ReadFile(fixtureName)
 	if err != nil {
 		return domain.JDAnalysis{}, fmt.Errorf("read fake JD analysis: %w", err)
 	}
