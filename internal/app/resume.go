@@ -1,0 +1,702 @@
+package app
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/ch1lam/autocv/internal/domain"
+	"github.com/ch1lam/autocv/internal/ports"
+	"github.com/ch1lam/autocv/internal/workflow"
+	"github.com/google/uuid"
+)
+
+type ResumeService struct {
+	resumeRepository  ports.ResumeRepository
+	matchRepository   ports.MatchRepository
+	profileRepository ports.ProfileRepository
+	jdRepository      ports.JDRepository
+	drafter           ports.ResumeDrafter
+	clock             ports.Clock
+}
+
+type ResumeWorkspace struct {
+	Status            string               `json:"status"`
+	Message           string               `json:"message"`
+	CanExport         bool                 `json:"canExport"`
+	ExportIssues      []string             `json:"exportIssues"`
+	RunID             string               `json:"runId"`
+	ResumeID          string               `json:"resumeId"`
+	Version           int                  `json:"version"`
+	Language          string               `json:"language"`
+	TargetRole        string               `json:"targetRole"`
+	PackagingLevel    float64              `json:"packagingLevel"`
+	PackagingLabel    string               `json:"packagingLabel"`
+	Markdown          string               `json:"markdown"`
+	UpdatedAt         string               `json:"updatedAt"`
+	OptimizationNotes []string             `json:"optimizationNotes"`
+	Blocks            []ResumeBlockSummary `json:"blocks"`
+}
+
+type ResumeBlockSummary struct {
+	ID             string                 `json:"id"`
+	Kind           string                 `json:"kind"`
+	Label          string                 `json:"label"`
+	Content        string                 `json:"content"`
+	Locked         bool                   `json:"locked"`
+	GroundingLevel string                 `json:"groundingLevel"`
+	Optimization   string                 `json:"optimization"`
+	Evidence       []MatchEvidenceSummary `json:"evidence"`
+}
+
+type preparedResumeInput struct {
+	profile  domain.Profile
+	jd       domain.JobDescription
+	match    domain.MatchAnalysis
+	evidence []domain.Evidence
+	role     string
+}
+
+func (service *ResumeService) currentReadyResume(
+	ctx context.Context,
+) (domain.ResumeRun, domain.Resume, error) {
+	input, blocked, err := service.prepareInput(ctx)
+	if err != nil {
+		return domain.ResumeRun{}, domain.Resume{}, err
+	}
+	if blocked.Status != "" {
+		return domain.ResumeRun{}, domain.Resume{}, errors.New(blocked.Message)
+	}
+
+	run, resume, found, err := service.resumeRepository.GetLatest(
+		ctx,
+		input.profile.ID,
+		input.jd.ID,
+	)
+	if err != nil {
+		return domain.ResumeRun{}, domain.Resume{}, err
+	}
+	if !found {
+		return domain.ResumeRun{}, domain.Resume{}, errors.New(
+			"resume has not been generated",
+		)
+	}
+	expectedHash, err := hashResumeInput(
+		input.match,
+		run.Language,
+		run.PackagingLevel,
+	)
+	if err != nil {
+		return domain.ResumeRun{}, domain.Resume{}, err
+	}
+	if resume.InputHash != expectedHash {
+		return domain.ResumeRun{}, domain.Resume{}, errors.New(
+			"resume inputs changed; regenerate before rendering",
+		)
+	}
+	if err := domain.ValidateResume(resume, input.evidence); err != nil {
+		return domain.ResumeRun{}, domain.Resume{}, fmt.Errorf(
+			"validate resume for rendering: %w",
+			err,
+		)
+	}
+	return run, resume, nil
+}
+
+func NewResumeService(
+	resumeRepository ports.ResumeRepository,
+	matchRepository ports.MatchRepository,
+	profileRepository ports.ProfileRepository,
+	jdRepository ports.JDRepository,
+	drafter ports.ResumeDrafter,
+	clock ports.Clock,
+) *ResumeService {
+	return &ResumeService{
+		resumeRepository:  resumeRepository,
+		matchRepository:   matchRepository,
+		profileRepository: profileRepository,
+		jdRepository:      jdRepository,
+		drafter:           drafter,
+		clock:             clock,
+	}
+}
+
+func (service *ResumeService) GetWorkspace() (ResumeWorkspace, error) {
+	ctx := context.Background()
+	input, blocked, err := service.prepareInput(ctx)
+	if err != nil {
+		return ResumeWorkspace{}, err
+	}
+	if blocked.Status != "" {
+		return blocked, nil
+	}
+
+	run, resume, found, err := service.resumeRepository.GetLatest(
+		ctx,
+		input.profile.ID,
+		input.jd.ID,
+	)
+	if err != nil {
+		return ResumeWorkspace{}, err
+	}
+	if !found {
+		return ResumeWorkspace{
+			Status:       "pending",
+			Message:      "匹配结果已就绪，可以生成第一版结构化简历。",
+			ExportIssues: make([]string, 0),
+			TargetRole:   input.role,
+			Blocks:       make([]ResumeBlockSummary, 0),
+		}, nil
+	}
+	expectedHash, err := hashResumeInput(
+		input.match,
+		run.Language,
+		run.PackagingLevel,
+	)
+	if err != nil {
+		return ResumeWorkspace{}, err
+	}
+	if resume.InputHash != expectedHash {
+		message := "资料、JD 或匹配结果已变化，请重新生成未锁定内容。"
+		if lockedCount := lockedResumeBlockCount(resume.Blocks); lockedCount > 0 {
+			message = fmt.Sprintf(
+				"资料、JD 或匹配结果已变化；%d 个锁定 Block 不会自动改写，请确认它们仍适合当前岗位后再重新生成。",
+				lockedCount,
+			)
+		}
+		return ResumeWorkspace{
+			Status:            "stale",
+			Message:           message,
+			ExportIssues:      []string{"资料、JD 或匹配结果已变化，请先重新生成当前版本。"},
+			RunID:             run.ID,
+			ResumeID:          resume.ID,
+			Version:           resume.Version,
+			Language:          string(run.Language),
+			TargetRole:        resume.TargetRole,
+			PackagingLevel:    run.PackagingLevel,
+			PackagingLabel:    resumePackagingLabel(run.PackagingLevel),
+			Markdown:          resume.Markdown,
+			UpdatedAt:         resume.CreatedAt.UTC().Format(timeFormat),
+			OptimizationNotes: resume.OptimizationNotes,
+			Blocks:            resumeBlockSummaries(resume, input.evidence),
+		}, nil
+	}
+	if err := domain.ValidateResume(resume, input.evidence); err != nil {
+		return ResumeWorkspace{}, fmt.Errorf(
+			"validate stored resume: %w",
+			err,
+		)
+	}
+	return resumeWorkspaceFrom(run, resume, input.evidence), nil
+}
+
+func (service *ResumeService) Generate(
+	language string,
+	packagingLevel float64,
+) (ResumeWorkspace, error) {
+	resumeLanguage := domain.ResumeLanguage(language)
+	if resumeLanguage != domain.ResumeLanguageChinese &&
+		resumeLanguage != domain.ResumeLanguageEnglish {
+		return ResumeWorkspace{}, fmt.Errorf(
+			"invalid resume language %q",
+			language,
+		)
+	}
+	if packagingLevel < 0 || packagingLevel > 1 {
+		return ResumeWorkspace{}, fmt.Errorf(
+			"resume packaging level %.2f is outside 0..1",
+			packagingLevel,
+		)
+	}
+
+	ctx := context.Background()
+	input, blocked, err := service.prepareInput(ctx)
+	if err != nil {
+		return ResumeWorkspace{}, err
+	}
+	if blocked.Status != "" {
+		return ResumeWorkspace{}, errors.New(blocked.Message)
+	}
+	draft, err := service.drafter.DraftResume(
+		ctx,
+		ports.DraftResumeRequest{
+			Language:       resumeLanguage,
+			TargetRole:     input.role,
+			PackagingLevel: packagingLevel,
+			Match:          input.match,
+			Evidence:       input.evidence,
+		},
+	)
+	if err != nil {
+		return ResumeWorkspace{}, fmt.Errorf("draft resume: %w", err)
+	}
+	if err := domain.ValidateResumeDraft(draft, input.evidence); err != nil {
+		return ResumeWorkspace{}, fmt.Errorf("validate resume draft: %w", err)
+	}
+
+	now := service.clock.Now().UTC()
+	run, previous, found, err := service.resumeRepository.GetLatest(
+		ctx,
+		input.profile.ID,
+		input.jd.ID,
+	)
+	if err != nil {
+		return ResumeWorkspace{}, err
+	}
+	if !found {
+		run = domain.ResumeRun{
+			ID:        resumeRunID(input.profile.ID, input.jd.ID),
+			ProfileID: input.profile.ID,
+			JDID:      input.jd.ID,
+			CreatedAt: now,
+		}
+	}
+	run.Status = "active"
+	run.Stage = string(workflow.StageDrafted)
+	run.PackagingLevel = packagingLevel
+	run.Language = resumeLanguage
+	run.UpdatedAt = now
+
+	version := 1
+	if found {
+		version = previous.Version + 1
+	}
+	inputHash, err := hashResumeInput(
+		input.match,
+		resumeLanguage,
+		packagingLevel,
+	)
+	if err != nil {
+		return ResumeWorkspace{}, err
+	}
+	resume := domain.Resume{
+		ID:                uuid.NewString(),
+		RunID:             run.ID,
+		InputHash:         inputHash,
+		Version:           version,
+		Language:          draft.Language,
+		TargetRole:        draft.TargetRole,
+		OptimizationNotes: append([]string(nil), draft.OptimizationNotes...),
+		CreatedAt:         now,
+		Blocks:            resumeBlocksFromDraft(run.ID, draft.Blocks),
+	}
+	if found {
+		resume.Blocks = preserveLockedResumeBlocks(
+			resume.Blocks,
+			previous.Blocks,
+			previous.InputHash != inputHash,
+			&resume.OptimizationNotes,
+		)
+	}
+	resume.Markdown = domain.RenderResumeMarkdown(resume)
+	if err := domain.ValidateResume(resume, input.evidence); err != nil {
+		return ResumeWorkspace{}, fmt.Errorf("validate generated resume: %w", err)
+	}
+	if err := service.resumeRepository.SaveVersion(ctx, run, resume); err != nil {
+		return ResumeWorkspace{}, err
+	}
+	return resumeWorkspaceFrom(run, resume, input.evidence), nil
+}
+
+func (service *ResumeService) UpdateMarkdown(
+	markdown string,
+) (ResumeWorkspace, error) {
+	return service.updateCurrentResume(func(
+		resume domain.Resume,
+	) (domain.Resume, error) {
+		return domain.ApplyResumeMarkdown(resume, markdown)
+	})
+}
+
+func (service *ResumeService) SetBlockLocked(
+	blockID string,
+	locked bool,
+) (ResumeWorkspace, error) {
+	blockID = strings.TrimSpace(blockID)
+	if blockID == "" {
+		return ResumeWorkspace{}, errors.New("resume block id is empty")
+	}
+	return service.updateCurrentResume(func(
+		resume domain.Resume,
+	) (domain.Resume, error) {
+		updated := resume
+		updated.Blocks = append([]domain.ResumeBlock(nil), resume.Blocks...)
+		for index := range updated.Blocks {
+			if updated.Blocks[index].ID == blockID {
+				updated.Blocks[index].Locked = locked
+				return updated, nil
+			}
+		}
+		return domain.Resume{}, fmt.Errorf(
+			"resume block %q was not found",
+			blockID,
+		)
+	})
+}
+
+func (service *ResumeService) updateCurrentResume(
+	update func(domain.Resume) (domain.Resume, error),
+) (ResumeWorkspace, error) {
+	ctx := context.Background()
+	input, blocked, err := service.prepareInput(ctx)
+	if err != nil {
+		return ResumeWorkspace{}, err
+	}
+	if blocked.Status != "" {
+		return ResumeWorkspace{}, errors.New(blocked.Message)
+	}
+	run, current, found, err := service.resumeRepository.GetLatest(
+		ctx,
+		input.profile.ID,
+		input.jd.ID,
+	)
+	if err != nil {
+		return ResumeWorkspace{}, err
+	}
+	if !found {
+		return ResumeWorkspace{}, errors.New("resume has not been generated")
+	}
+	expectedHash, err := hashResumeInput(
+		input.match,
+		run.Language,
+		run.PackagingLevel,
+	)
+	if err != nil {
+		return ResumeWorkspace{}, err
+	}
+	if current.InputHash != expectedHash {
+		return ResumeWorkspace{}, errors.New(
+			"resume inputs changed; regenerate before editing",
+		)
+	}
+
+	updated, err := update(current)
+	if err != nil {
+		return ResumeWorkspace{}, err
+	}
+	now := service.clock.Now().UTC()
+	updated.ID = uuid.NewString()
+	updated.Version = current.Version + 1
+	updated.CreatedAt = now
+	if err := domain.ValidateResume(updated, input.evidence); err != nil {
+		return ResumeWorkspace{}, fmt.Errorf("validate updated resume: %w", err)
+	}
+	run.UpdatedAt = now
+	if err := service.resumeRepository.SaveVersion(ctx, run, updated); err != nil {
+		return ResumeWorkspace{}, err
+	}
+	return resumeWorkspaceFrom(run, updated, input.evidence), nil
+}
+
+func (service *ResumeService) prepareInput(
+	ctx context.Context,
+) (preparedResumeInput, ResumeWorkspace, error) {
+	profile, err := service.profileRepository.EnsureDefaultProfile(
+		ctx,
+		defaultProfileName,
+		defaultProfileLanguage,
+		service.clock.Now(),
+	)
+	if err != nil {
+		return preparedResumeInput{}, ResumeWorkspace{}, err
+	}
+	jd, found, err := service.jdRepository.GetLatest(ctx)
+	if err != nil {
+		return preparedResumeInput{}, ResumeWorkspace{}, err
+	}
+	if !found || jd.AnalysisStatus != "succeeded" || jd.AnalysisJSON == "" {
+		return preparedResumeInput{}, ResumeWorkspace{
+			Status:       "blocked",
+			Message:      "请先完成目标 JD 的结构化分析。",
+			ExportIssues: make([]string, 0),
+			Blocks:       make([]ResumeBlockSummary, 0),
+		}, nil
+	}
+	jdAnalysis, err := domain.DecodeJDAnalysis([]byte(jd.AnalysisJSON))
+	if err != nil {
+		return preparedResumeInput{}, ResumeWorkspace{}, fmt.Errorf(
+			"decode JD analysis for resume: %w",
+			err,
+		)
+	}
+	requirements, err := buildMatchRequirements(jdAnalysis)
+	if err != nil {
+		return preparedResumeInput{}, ResumeWorkspace{}, err
+	}
+	evidence, err := service.profileRepository.ListEvidence(ctx, profile.ID)
+	if err != nil {
+		return preparedResumeInput{}, ResumeWorkspace{}, err
+	}
+	if len(evidence) == 0 {
+		return preparedResumeInput{}, ResumeWorkspace{
+			Status:       "blocked",
+			Message:      "请先导入 Markdown 职业资料。",
+			ExportIssues: make([]string, 0),
+			Blocks:       make([]ResumeBlockSummary, 0),
+		}, nil
+	}
+	currentMatchHash, err := hashMatchInput(jd, requirements, evidence)
+	if err != nil {
+		return preparedResumeInput{}, ResumeWorkspace{}, err
+	}
+	match, found, err := service.matchRepository.GetLatest(
+		ctx,
+		profile.ID,
+		jd.ID,
+	)
+	if err != nil {
+		return preparedResumeInput{}, ResumeWorkspace{}, err
+	}
+	if !found || match.Status != "succeeded" {
+		return preparedResumeInput{}, ResumeWorkspace{
+			Status:       "blocked",
+			Message:      "请先完成当前资料与 JD 的匹配分析。",
+			ExportIssues: make([]string, 0),
+			Blocks:       make([]ResumeBlockSummary, 0),
+		}, nil
+	}
+	if match.InputHash != currentMatchHash {
+		return preparedResumeInput{}, ResumeWorkspace{
+			Status:       "blocked",
+			Message:      "匹配结果已失效，请先重新匹配。",
+			ExportIssues: make([]string, 0),
+			Blocks:       make([]ResumeBlockSummary, 0),
+		}, nil
+	}
+	if err := domain.ValidateMatchSuggestions(
+		match.Requirements,
+		evidence,
+		match.Suggestions,
+	); err != nil {
+		return preparedResumeInput{}, ResumeWorkspace{}, fmt.Errorf(
+			"validate match analysis for resume: %w",
+			err,
+		)
+	}
+	role := strings.TrimSpace(jdAnalysis.Role)
+	if role == "" {
+		role = strings.TrimSpace(jd.Title)
+	}
+	return preparedResumeInput{
+		profile:  profile,
+		jd:       jd,
+		match:    match,
+		evidence: evidence,
+		role:     role,
+	}, ResumeWorkspace{}, nil
+}
+
+func hashResumeInput(
+	match domain.MatchAnalysis,
+	language domain.ResumeLanguage,
+	packagingLevel float64,
+) (string, error) {
+	contents, err := json.Marshal(struct {
+		MatchID        string
+		MatchInput     string
+		Requirements   []domain.MatchRequirement
+		Suggestions    []domain.MatchSuggestion
+		Language       domain.ResumeLanguage
+		PackagingLevel float64
+	}{
+		MatchID:        match.ID,
+		MatchInput:     match.InputHash,
+		Requirements:   match.Requirements,
+		Suggestions:    match.Suggestions,
+		Language:       language,
+		PackagingLevel: packagingLevel,
+	})
+	if err != nil {
+		return "", fmt.Errorf("encode resume input: %w", err)
+	}
+	digest := sha256.Sum256(contents)
+	return hex.EncodeToString(digest[:]), nil
+}
+
+func resumeBlocksFromDraft(
+	runID string,
+	drafts []domain.ResumeBlockDraft,
+) []domain.ResumeBlock {
+	blocks := make([]domain.ResumeBlock, 0, len(drafts))
+	seenKeys := make(map[string]int)
+	for _, draft := range drafts {
+		sourceIDs := append([]string(nil), draft.SourceEvidenceIDs...)
+		sort.Strings(sourceIDs)
+		key := string(draft.Kind)
+		if draft.Kind != domain.ResumeBlockSummary {
+			key += ":" + strings.Join(sourceIDs, ",")
+		}
+		seenKeys[key]++
+		if seenKeys[key] > 1 {
+			key += fmt.Sprintf(":%d", seenKeys[key])
+		}
+		blocks = append(blocks, domain.ResumeBlock{
+			ID:                resumeBlockID(runID, key),
+			Kind:              draft.Kind,
+			Content:           strings.TrimSpace(draft.Content),
+			SourceEvidenceIDs: append([]string(nil), draft.SourceEvidenceIDs...),
+			GroundingLevel:    draft.GroundingLevel,
+			Optimization:      strings.TrimSpace(draft.Optimization),
+		})
+	}
+	return blocks
+}
+
+func preserveLockedResumeBlocks(
+	generated []domain.ResumeBlock,
+	previous []domain.ResumeBlock,
+	upstreamChanged bool,
+	notes *[]string,
+) []domain.ResumeBlock {
+	lockedByID := make(map[string]domain.ResumeBlock)
+	for _, block := range previous {
+		if block.Locked {
+			lockedByID[block.ID] = block
+		}
+	}
+	if len(lockedByID) == 0 {
+		return generated
+	}
+	preserved := make(map[string]struct{})
+	for index := range generated {
+		if block, exists := lockedByID[generated[index].ID]; exists {
+			generated[index] = block
+			preserved[block.ID] = struct{}{}
+		}
+	}
+	for _, block := range previous {
+		if !block.Locked {
+			continue
+		}
+		if _, exists := preserved[block.ID]; exists {
+			continue
+		}
+		generated = append(generated, block)
+	}
+	note := fmt.Sprintf("重新生成时保留了 %d 个锁定内容块。", len(lockedByID))
+	if upstreamChanged {
+		note = fmt.Sprintf(
+			"上游资料或 JD 已变化，仍逐字保留了 %d 个锁定内容块；请确认它们与当前岗位和篇幅没有冲突。",
+			len(lockedByID),
+		)
+	}
+	*notes = append(*notes, note)
+	return generated
+}
+
+func lockedResumeBlockCount(blocks []domain.ResumeBlock) int {
+	count := 0
+	for _, block := range blocks {
+		if block.Locked {
+			count++
+		}
+	}
+	return count
+}
+
+func resumeWorkspaceFrom(
+	run domain.ResumeRun,
+	resume domain.Resume,
+	evidence []domain.Evidence,
+) ResumeWorkspace {
+	exportIssues := domain.ResumeExportIssues(resume)
+	return ResumeWorkspace{
+		Status:            "ready",
+		Message:           "结构化简历、Markdown 与来源引用已保存到本地。",
+		CanExport:         len(exportIssues) == 0,
+		ExportIssues:      exportIssues,
+		RunID:             run.ID,
+		ResumeID:          resume.ID,
+		Version:           resume.Version,
+		Language:          string(resume.Language),
+		TargetRole:        resume.TargetRole,
+		PackagingLevel:    run.PackagingLevel,
+		PackagingLabel:    resumePackagingLabel(run.PackagingLevel),
+		Markdown:          resume.Markdown,
+		UpdatedAt:         resume.CreatedAt.UTC().Format(timeFormat),
+		OptimizationNotes: append([]string(nil), resume.OptimizationNotes...),
+		Blocks:            resumeBlockSummaries(resume, evidence),
+	}
+}
+
+func resumeBlockSummaries(
+	resume domain.Resume,
+	evidence []domain.Evidence,
+) []ResumeBlockSummary {
+	evidenceByID := make(map[string]domain.Evidence, len(evidence))
+	for _, item := range evidence {
+		evidenceByID[item.ID] = item
+	}
+	summaries := make([]ResumeBlockSummary, 0, len(resume.Blocks))
+	for _, block := range resume.Blocks {
+		summary := ResumeBlockSummary{
+			ID:             block.ID,
+			Kind:           string(block.Kind),
+			Label:          resumeBlockKindLabel(block.Kind),
+			Content:        block.Content,
+			Locked:         block.Locked,
+			GroundingLevel: string(block.GroundingLevel),
+			Optimization:   block.Optimization,
+			Evidence:       make([]MatchEvidenceSummary, 0, len(block.SourceEvidenceIDs)),
+		}
+		for _, evidenceID := range block.SourceEvidenceIDs {
+			if item, exists := evidenceByID[evidenceID]; exists {
+				summary.Evidence = append(
+					summary.Evidence,
+					matchEvidenceSummary(item),
+				)
+			}
+		}
+		summaries = append(summaries, summary)
+	}
+	return summaries
+}
+
+func resumeBlockKindLabel(kind domain.ResumeBlockKind) string {
+	switch kind {
+	case domain.ResumeBlockSummary:
+		return "职业概述"
+	case domain.ResumeBlockExperience:
+		return "工作经历"
+	case domain.ResumeBlockProject:
+		return "项目经历"
+	case domain.ResumeBlockSkill:
+		return "技能"
+	case domain.ResumeBlockEducation:
+		return "教育经历"
+	case domain.ResumeBlockCertification:
+		return "认证"
+	default:
+		return string(kind)
+	}
+}
+
+func resumePackagingLabel(level float64) string {
+	switch {
+	case level < 0.34:
+		return "保守"
+	case level < 0.67:
+		return "平衡"
+	default:
+		return "强化"
+	}
+}
+
+func resumeRunID(profileID string, jdID string) string {
+	return uuid.NewSHA1(
+		uuid.NameSpaceURL,
+		[]byte("https://autocv.local/resume-runs/"+profileID+"/"+jdID),
+	).String()
+}
+
+func resumeBlockID(runID string, key string) string {
+	return uuid.NewSHA1(
+		uuid.NameSpaceURL,
+		[]byte("https://autocv.local/resume-blocks/"+runID+"/"+key),
+	).String()
+}

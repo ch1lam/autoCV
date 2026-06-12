@@ -1,0 +1,309 @@
+package sqlite
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+
+	"github.com/ch1lam/autocv/internal/domain"
+	"github.com/ch1lam/autocv/internal/ports"
+)
+
+type ResumeRepository struct {
+	db *sql.DB
+}
+
+type resumeStructureSnapshot struct {
+	Language          domain.ResumeLanguage `json:"language"`
+	TargetRole        string                `json:"target_role"`
+	Blocks            []domain.ResumeBlock  `json:"blocks"`
+	OptimizationNotes []string              `json:"optimization_notes"`
+}
+
+func NewResumeRepository(db *sql.DB) *ResumeRepository {
+	return &ResumeRepository{db: db}
+}
+
+func (repository *ResumeRepository) GetLatest(
+	ctx context.Context,
+	profileID string,
+	jdID string,
+) (domain.ResumeRun, domain.Resume, bool, error) {
+	var run domain.ResumeRun
+	var runCreatedAt string
+	var runUpdatedAt string
+	err := repository.db.QueryRowContext(
+		ctx,
+		`SELECT id, profile_id, jd_id, status, stage, packaging_level,
+		        language, created_at, updated_at
+		   FROM resume_runs
+		  WHERE profile_id = ? AND jd_id = ?
+		  ORDER BY updated_at DESC, created_at DESC, id
+		  LIMIT 1`,
+		profileID,
+		jdID,
+	).Scan(
+		&run.ID,
+		&run.ProfileID,
+		&run.JDID,
+		&run.Status,
+		&run.Stage,
+		&run.PackagingLevel,
+		&run.Language,
+		&runCreatedAt,
+		&runUpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.ResumeRun{}, domain.Resume{}, false, nil
+	}
+	if err != nil {
+		return domain.ResumeRun{}, domain.Resume{}, false, fmt.Errorf(
+			"get latest resume run: %w",
+			err,
+		)
+	}
+	run.CreatedAt, err = parseTime(runCreatedAt)
+	if err != nil {
+		return domain.ResumeRun{}, domain.Resume{}, false, err
+	}
+	run.UpdatedAt, err = parseTime(runUpdatedAt)
+	if err != nil {
+		return domain.ResumeRun{}, domain.Resume{}, false, err
+	}
+
+	resume, found, err := repository.getLatestResume(ctx, run.ID)
+	if err != nil {
+		return domain.ResumeRun{}, domain.Resume{}, false, err
+	}
+	return run, resume, found, nil
+}
+
+func (repository *ResumeRepository) SaveVersion(
+	ctx context.Context,
+	run domain.ResumeRun,
+	resume domain.Resume,
+) error {
+	structureJSON, err := json.Marshal(resumeStructureSnapshot{
+		Language:          resume.Language,
+		TargetRole:        resume.TargetRole,
+		Blocks:            resume.Blocks,
+		OptimizationNotes: resume.OptimizationNotes,
+	})
+	if err != nil {
+		return fmt.Errorf("encode resume structure: %w", err)
+	}
+
+	tx, err := repository.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin resume transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO resume_runs(
+			id, profile_id, jd_id, status, stage, packaging_level,
+			language, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			status = excluded.status,
+			stage = excluded.stage,
+			packaging_level = excluded.packaging_level,
+			language = excluded.language,
+			updated_at = excluded.updated_at`,
+		run.ID,
+		run.ProfileID,
+		run.JDID,
+		run.Status,
+		run.Stage,
+		run.PackagingLevel,
+		run.Language,
+		formatTime(run.CreatedAt),
+		formatTime(run.UpdatedAt),
+	); err != nil {
+		return fmt.Errorf("save resume run: %w", err)
+	}
+
+	if _, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO resumes(
+			id, run_id, version, structure_json, markdown,
+			created_at, input_hash
+		) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		resume.ID,
+		resume.RunID,
+		resume.Version,
+		string(structureJSON),
+		resume.Markdown,
+		formatTime(resume.CreatedAt),
+		resume.InputHash,
+	); err != nil {
+		return fmt.Errorf("insert resume version: %w", err)
+	}
+
+	for ordinal, block := range resume.Blocks {
+		if _, err := tx.ExecContext(
+			ctx,
+			`INSERT INTO resume_blocks(
+				resume_id, id, kind, ordinal, content, locked,
+				grounding_level, optimization
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			resume.ID,
+			block.ID,
+			block.Kind,
+			ordinal,
+			block.Content,
+			block.Locked,
+			block.GroundingLevel,
+			block.Optimization,
+		); err != nil {
+			return fmt.Errorf("insert resume block: %w", err)
+		}
+		for sourceOrdinal, evidenceID := range block.SourceEvidenceIDs {
+			if _, err := tx.ExecContext(
+				ctx,
+				`INSERT INTO block_sources(
+					resume_id, block_id, evidence_id, ordinal,
+					relation, risk_level
+				) VALUES (?, ?, ?, ?, 'supports', ?)`,
+				resume.ID,
+				block.ID,
+				evidenceID,
+				sourceOrdinal,
+				resumeBlockRiskLevel(block),
+			); err != nil {
+				return fmt.Errorf("insert resume block source: %w", err)
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit resume version: %w", err)
+	}
+	return nil
+}
+
+func (repository *ResumeRepository) getLatestResume(
+	ctx context.Context,
+	runID string,
+) (domain.Resume, bool, error) {
+	var resume domain.Resume
+	var structureJSON string
+	var createdAt string
+	err := repository.db.QueryRowContext(
+		ctx,
+		`SELECT id, run_id, input_hash, version, structure_json,
+		        markdown, created_at
+		   FROM resumes
+		  WHERE run_id = ?
+		  ORDER BY version DESC
+		  LIMIT 1`,
+		runID,
+	).Scan(
+		&resume.ID,
+		&resume.RunID,
+		&resume.InputHash,
+		&resume.Version,
+		&structureJSON,
+		&resume.Markdown,
+		&createdAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.Resume{}, false, nil
+	}
+	if err != nil {
+		return domain.Resume{}, false, fmt.Errorf(
+			"get latest resume version: %w",
+			err,
+		)
+	}
+	resume.CreatedAt, err = parseTime(createdAt)
+	if err != nil {
+		return domain.Resume{}, false, err
+	}
+
+	var snapshot resumeStructureSnapshot
+	if err := json.Unmarshal([]byte(structureJSON), &snapshot); err != nil {
+		return domain.Resume{}, false, fmt.Errorf(
+			"decode resume structure: %w",
+			err,
+		)
+	}
+	resume.Language = snapshot.Language
+	resume.TargetRole = snapshot.TargetRole
+	resume.OptimizationNotes = snapshot.OptimizationNotes
+	resume.Blocks, err = repository.listResumeBlocks(ctx, resume.ID)
+	if err != nil {
+		return domain.Resume{}, false, err
+	}
+	return resume, true, nil
+}
+
+func (repository *ResumeRepository) listResumeBlocks(
+	ctx context.Context,
+	resumeID string,
+) ([]domain.ResumeBlock, error) {
+	rows, err := repository.db.QueryContext(
+		ctx,
+		`SELECT rb.id, rb.kind, rb.content, rb.locked,
+		        rb.grounding_level, rb.optimization, bs.evidence_id
+		   FROM resume_blocks rb
+		   LEFT JOIN block_sources bs
+		     ON bs.resume_id = rb.resume_id
+		    AND bs.block_id = rb.id
+		  WHERE rb.resume_id = ?
+		  ORDER BY rb.ordinal, bs.ordinal`,
+		resumeID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list resume blocks: %w", err)
+	}
+	defer rows.Close()
+
+	blocks := make([]domain.ResumeBlock, 0)
+	indexByID := make(map[string]int)
+	for rows.Next() {
+		var block domain.ResumeBlock
+		var evidenceID sql.NullString
+		if err := rows.Scan(
+			&block.ID,
+			&block.Kind,
+			&block.Content,
+			&block.Locked,
+			&block.GroundingLevel,
+			&block.Optimization,
+			&evidenceID,
+		); err != nil {
+			return nil, fmt.Errorf("scan resume block: %w", err)
+		}
+		index, exists := indexByID[block.ID]
+		if !exists {
+			block.SourceEvidenceIDs = make([]string, 0)
+			blocks = append(blocks, block)
+			index = len(blocks) - 1
+			indexByID[block.ID] = index
+		}
+		if evidenceID.Valid {
+			blocks[index].SourceEvidenceIDs = append(
+				blocks[index].SourceEvidenceIDs,
+				evidenceID.String,
+			)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate resume blocks: %w", err)
+	}
+	return blocks, nil
+}
+
+func resumeBlockRiskLevel(block domain.ResumeBlock) string {
+	if block.GroundingLevel == domain.GroundingDerived ||
+		block.Kind == domain.ResumeBlockSummary {
+		return "medium"
+	}
+	return "low"
+}
+
+var _ ports.ResumeRepository = (*ResumeRepository)(nil)
