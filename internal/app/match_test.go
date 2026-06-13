@@ -144,6 +144,46 @@ func TestMatchServiceReportsMissingPrerequisites(t *testing.T) {
 	}
 }
 
+func TestMatchServiceUsesActiveProfile(t *testing.T) {
+	fixture := newMatchServiceFixture(t, fakeprovider.New())
+	fixture.importProfile(t)
+	fixture.analyzeJD(t, fixture.jdText)
+	if _, err := fixture.service.Analyze(); err != nil {
+		t.Fatalf("analyze default profile: %v", err)
+	}
+	mainProfile, err := fixture.profileService.GetOverview()
+	if err != nil {
+		t.Fatalf("get default profile: %v", err)
+	}
+
+	if _, err := fixture.profileService.CreateProfile(
+		"Empty profile",
+		"en",
+	); err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+	blocked, err := fixture.service.GetReview()
+	if err != nil {
+		t.Fatalf("get review for empty profile: %v", err)
+	}
+	if blocked.Status != "blocked" {
+		t.Fatalf("expected active empty profile to block matching, got %#v", blocked)
+	}
+
+	if _, err := fixture.profileService.SelectProfile(
+		mainProfile.ProfileID,
+	); err != nil {
+		t.Fatalf("restore default profile: %v", err)
+	}
+	restored, err := fixture.service.GetReview()
+	if err != nil {
+		t.Fatalf("restore default profile review: %v", err)
+	}
+	if restored.Status != "ready" {
+		t.Fatalf("expected saved default profile review, got %#v", restored)
+	}
+}
+
 type matchServiceFixture struct {
 	db                *sql.DB
 	files             *filesystem.ManagedFiles

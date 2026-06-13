@@ -396,10 +396,9 @@ func (service *ResumeService) updateCurrentResume(
 func (service *ResumeService) prepareInput(
 	ctx context.Context,
 ) (preparedResumeInput, ResumeWorkspace, error) {
-	profile, err := service.profileRepository.EnsureDefaultProfile(
+	profile, err := resolveActiveProfile(
 		ctx,
-		defaultProfileName,
-		defaultProfileLanguage,
+		service.profileRepository,
 		service.clock.Now(),
 	)
 	if err != nil {

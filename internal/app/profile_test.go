@@ -134,6 +134,61 @@ func TestProfileServiceDetectsDuplicateMarkdown(t *testing.T) {
 	}
 }
 
+func TestProfileServiceCreatesSelectsAndIsolatesProfiles(t *testing.T) {
+	service, _, _, _, _ := newProfileServiceTest(t)
+
+	mainProfile, err := service.GetOverview()
+	if err != nil {
+		t.Fatalf("get default profile: %v", err)
+	}
+	if len(mainProfile.Profiles) != 1 || !mainProfile.Profiles[0].Active {
+		t.Fatalf("expected one active default profile, got %#v", mainProfile.Profiles)
+	}
+	if _, err := service.ImportMarkdown(); err != nil {
+		t.Fatalf("import default profile: %v", err)
+	}
+
+	englishProfile, err := service.CreateProfile("English applications", "en")
+	if err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+	if englishProfile.Name != "English applications" ||
+		englishProfile.DefaultLanguage != "en" ||
+		len(englishProfile.Profiles) != 2 ||
+		len(englishProfile.Documents) != 0 {
+		t.Fatalf("unexpected created profile overview %#v", englishProfile)
+	}
+	if _, err := service.ImportMarkdown(); err != nil {
+		t.Fatalf("import same Markdown into second profile: %v", err)
+	}
+
+	restoredMain, err := service.SelectProfile(mainProfile.ProfileID)
+	if err != nil {
+		t.Fatalf("select default profile: %v", err)
+	}
+	if restoredMain.ProfileID != mainProfile.ProfileID ||
+		len(restoredMain.Documents) != 1 {
+		t.Fatalf("expected isolated default profile data, got %#v", restoredMain)
+	}
+}
+
+func TestProfileServiceRejectsInvalidProfileInput(t *testing.T) {
+	service, _, _, _, _ := newProfileServiceTest(t)
+
+	if _, err := service.CreateProfile("   ", "en"); err == nil {
+		t.Fatal("expected blank profile name error")
+	}
+	if _, err := service.CreateProfile(
+		string(make([]rune, 81)),
+		"en",
+	); err == nil {
+		t.Fatal("expected long profile name error")
+	}
+	if _, err := service.SelectProfile(" "); err == nil {
+		t.Fatal("expected blank profile id error")
+	}
+}
+
 func TestProfileServiceHandlesCancelledAndEmptySelection(t *testing.T) {
 	service, _, _, _, _ := newProfileServiceTest(t)
 	service.picker = fakeMarkdownPicker{}

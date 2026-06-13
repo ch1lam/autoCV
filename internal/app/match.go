@@ -252,10 +252,9 @@ func (service *MatchService) getReview(
 func (service *MatchService) prepareInput(
 	ctx context.Context,
 ) (preparedMatchInput, MatchReview, error) {
-	profile, err := service.profileRepository.EnsureDefaultProfile(
+	profile, err := resolveActiveProfile(
 		ctx,
-		defaultProfileName,
-		defaultProfileLanguage,
+		service.profileRepository,
 		service.clock.Now(),
 	)
 	if err != nil {

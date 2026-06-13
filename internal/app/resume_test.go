@@ -178,6 +178,58 @@ func TestResumeServiceWarnsWhenUpstreamChangesWithLockedBlocks(t *testing.T) {
 	}
 }
 
+func TestResumeServiceUsesActiveProfile(t *testing.T) {
+	matchFixture := newMatchServiceFixture(t, fakeprovider.New())
+	matchFixture.importProfile(t)
+	matchFixture.analyzeJD(t, matchFixture.jdText)
+	if _, err := matchFixture.service.Analyze(); err != nil {
+		t.Fatalf("analyze default profile: %v", err)
+	}
+	mainProfile, err := matchFixture.profileService.GetOverview()
+	if err != nil {
+		t.Fatalf("get default profile: %v", err)
+	}
+	service := NewResumeService(
+		sqliteadapter.NewResumeRepository(matchFixture.db),
+		matchFixture.matchRepository,
+		matchFixture.profileRepository,
+		matchFixture.jdRepository,
+		fakeprovider.New(),
+		fixedClock{now: profileTestTime.Add(2 * time.Hour)},
+	)
+	generated, err := service.Generate("zh", 0.5)
+	if err != nil {
+		t.Fatalf("generate default profile resume: %v", err)
+	}
+
+	if _, err := matchFixture.profileService.CreateProfile(
+		"Empty profile",
+		"en",
+	); err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+	blocked, err := service.GetWorkspace()
+	if err != nil {
+		t.Fatalf("get workspace for empty profile: %v", err)
+	}
+	if blocked.Status != "blocked" {
+		t.Fatalf("expected active empty profile to block resume, got %#v", blocked)
+	}
+
+	if _, err := matchFixture.profileService.SelectProfile(
+		mainProfile.ProfileID,
+	); err != nil {
+		t.Fatalf("restore default profile: %v", err)
+	}
+	restored, err := service.GetWorkspace()
+	if err != nil {
+		t.Fatalf("restore default profile resume: %v", err)
+	}
+	if restored.Status != "ready" || restored.ResumeID != generated.ResumeID {
+		t.Fatalf("expected saved default profile resume, got %#v", restored)
+	}
+}
+
 func newResumeServiceFixture(t *testing.T) *ResumeService {
 	t.Helper()
 	matchFixture := newMatchServiceFixture(t, fakeprovider.New())

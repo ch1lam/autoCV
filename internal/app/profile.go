@@ -34,8 +34,16 @@ type ProfileOverview struct {
 	ProfileID       string                  `json:"profileId"`
 	Name            string                  `json:"name"`
 	DefaultLanguage string                  `json:"defaultLanguage"`
+	Profiles        []ProfileSummary        `json:"profiles"`
 	Documents       []SourceDocumentSummary `json:"documents"`
 	Evidence        []EvidenceSummary       `json:"evidence"`
+}
+
+type ProfileSummary struct {
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	DefaultLanguage string `json:"defaultLanguage"`
+	Active          bool   `json:"active"`
 }
 
 type SourceDocumentSummary struct {
@@ -96,6 +104,23 @@ func (service *ProfileService) GetOverview() (ProfileOverview, error) {
 	return service.getOverview(context.Background())
 }
 
+func (service *ProfileService) CreateProfile(
+	name string,
+	defaultLanguage string,
+) (ProfileOverview, error) {
+	return service.createProfile(
+		context.Background(),
+		name,
+		defaultLanguage,
+	)
+}
+
+func (service *ProfileService) SelectProfile(
+	profileID string,
+) (ProfileOverview, error) {
+	return service.selectProfile(context.Background(), profileID)
+}
+
 func (service *ProfileService) ImportMarkdown() (ImportMarkdownResult, error) {
 	selected, accepted, err := service.picker.PickMarkdown()
 	if err != nil {
@@ -110,7 +135,15 @@ func (service *ProfileService) ImportMarkdown() (ImportMarkdownResult, error) {
 func (service *ProfileService) getOverview(
 	ctx context.Context,
 ) (ProfileOverview, error) {
-	profile, err := service.ensureDefaultProfile(ctx)
+	profile, err := resolveActiveProfile(
+		ctx,
+		service.repository,
+		service.clock.Now(),
+	)
+	if err != nil {
+		return ProfileOverview{}, err
+	}
+	profiles, err := service.repository.ListProfiles(ctx)
 	if err != nil {
 		return ProfileOverview{}, err
 	}
@@ -127,8 +160,15 @@ func (service *ProfileService) getOverview(
 		ProfileID:       profile.ID,
 		Name:            profile.Name,
 		DefaultLanguage: profile.DefaultLanguage,
+		Profiles:        make([]ProfileSummary, 0, len(profiles)),
 		Documents:       make([]SourceDocumentSummary, 0, len(documents)),
 		Evidence:        make([]EvidenceSummary, 0, len(evidence)),
+	}
+	for _, item := range profiles {
+		overview.Profiles = append(
+			overview.Profiles,
+			profileSummary(item),
+		)
 	}
 	for _, document := range documents {
 		overview.Documents = append(
@@ -145,6 +185,64 @@ func (service *ProfileService) getOverview(
 	return overview, nil
 }
 
+func (service *ProfileService) createProfile(
+	ctx context.Context,
+	name string,
+	defaultLanguage string,
+) (ProfileOverview, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ProfileOverview{}, errors.New("Profile name is empty")
+	}
+	if len([]rune(name)) > 80 {
+		return ProfileOverview{}, errors.New(
+			"Profile name must be 80 characters or fewer",
+		)
+	}
+	defaultLanguage = strings.TrimSpace(defaultLanguage)
+	if defaultLanguage == "" {
+		defaultLanguage = defaultProfileLanguage
+	}
+
+	now := service.clock.Now().UTC()
+	profile := domain.Profile{
+		ID:              uuid.NewString(),
+		Name:            name,
+		DefaultLanguage: defaultLanguage,
+		Active:          true,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	if err := service.repository.CreateProfile(ctx, profile); err != nil {
+		return ProfileOverview{}, err
+	}
+	slog.Info(
+		"profile.created",
+		slog.String("profile_id", profile.ID),
+		slog.String("default_language", profile.DefaultLanguage),
+	)
+	return service.getOverview(ctx)
+}
+
+func (service *ProfileService) selectProfile(
+	ctx context.Context,
+	profileID string,
+) (ProfileOverview, error) {
+	profileID = strings.TrimSpace(profileID)
+	if profileID == "" {
+		return ProfileOverview{}, errors.New("Profile id is empty")
+	}
+	profile, err := service.repository.SetActiveProfile(ctx, profileID)
+	if err != nil {
+		return ProfileOverview{}, err
+	}
+	slog.Info(
+		"profile.selected",
+		slog.String("profile_id", profile.ID),
+	)
+	return service.getOverview(ctx)
+}
+
 func (service *ProfileService) importMarkdown(
 	ctx context.Context,
 	selected ports.SelectedMarkdown,
@@ -156,7 +254,11 @@ func (service *ProfileService) importMarkdown(
 		return ImportMarkdownResult{}, errors.New("Markdown file is empty")
 	}
 
-	profile, err := service.ensureDefaultProfile(ctx)
+	profile, err := resolveActiveProfile(
+		ctx,
+		service.repository,
+		service.clock.Now(),
+	)
 	if err != nil {
 		return ImportMarkdownResult{}, err
 	}
@@ -259,15 +361,28 @@ func (service *ProfileService) importMarkdown(
 	}, nil
 }
 
-func (service *ProfileService) ensureDefaultProfile(
+func resolveActiveProfile(
 	ctx context.Context,
+	repository ports.ProfileRepository,
+	now time.Time,
 ) (domain.Profile, error) {
-	return service.repository.EnsureDefaultProfile(
+	defaultProfile, err := repository.EnsureDefaultProfile(
 		ctx,
 		defaultProfileName,
 		defaultProfileLanguage,
-		service.clock.Now(),
+		now,
 	)
+	if err != nil {
+		return domain.Profile{}, err
+	}
+	active, found, err := repository.GetActiveProfile(ctx)
+	if err != nil {
+		return domain.Profile{}, err
+	}
+	if found {
+		return active, nil
+	}
+	return repository.SetActiveProfile(ctx, defaultProfile.ID)
 }
 
 func buildSourceChunks(
@@ -354,6 +469,15 @@ func sourceDocumentSummary(
 		Kind:         document.Kind,
 		ParseStatus:  document.ParseStatus,
 		ImportedAt:   document.CreatedAt.UTC().Format(time.RFC3339),
+	}
+}
+
+func profileSummary(profile domain.Profile) ProfileSummary {
+	return ProfileSummary{
+		ID:              profile.ID,
+		Name:            profile.Name,
+		DefaultLanguage: profile.DefaultLanguage,
+		Active:          profile.Active,
 	}
 }
 
