@@ -22,6 +22,7 @@ const {
   getSettingsMock,
   saveJDDraftMock,
   saveProviderMock,
+  searchProfileMock,
   selectProfileMock,
   setResumeBlockLockedMock,
   updateResumeMarkdownMock,
@@ -43,6 +44,7 @@ const {
   renderPDFMock: vi.fn(),
   saveJDDraftMock: vi.fn(),
   saveProviderMock: vi.fn(),
+  searchProfileMock: vi.fn(),
   selectProfileMock: vi.fn(),
   setResumeBlockLockedMock: vi.fn(),
   updateResumeMarkdownMock: vi.fn(),
@@ -71,6 +73,7 @@ vi.mock("../bindings/github.com/ch1lam/autocv/internal/app", () => ({
     CreateProfile: createProfileMock,
     GetOverview: getOverviewMock,
     ImportMarkdown: importMarkdownMock,
+    Search: searchProfileMock,
     SelectProfile: selectProfileMock,
   },
   ProviderControlService: {
@@ -537,6 +540,7 @@ describe("Paper Trail match review", () => {
             : providerSettings.configurationNote,
       }),
     );
+    searchProfileMock.mockReset().mockResolvedValue([]);
     selectProfileMock.mockReset();
   });
 
@@ -826,6 +830,50 @@ describe("Paper Trail match review", () => {
         "已导入 backend-profile.md，生成 1 条可追溯 Evidence。",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("searches Profile sources and shows document snippets", async () => {
+    const user = userEvent.setup();
+    searchProfileMock.mockResolvedValue([
+      {
+        entityType: "evidence",
+        entityId: "evidence-1",
+        documentId: "document-1",
+        sourceChunkId: "chunk-1",
+        documentName: "backend-profile.md",
+        title: "负责支付平台核心服务开发",
+        snippet: "使用 Go 构建高并发交易接口。",
+      },
+      {
+        entityType: "source_chunk",
+        entityId: "chunk-1",
+        documentId: "document-1",
+        sourceChunkId: "chunk-1",
+        documentName: "backend-profile.md",
+        title: "backend-profile.md",
+        snippet: "负责支付平台核心服务开发，使用 Go 构建高并发交易接口。",
+      },
+    ]);
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "资料库" }));
+    const search = await screen.findByRole("searchbox", {
+      name: "搜索资料库",
+    });
+    await user.type(search, "Go");
+    await user.click(
+      within(screen.getByRole("region", { name: "资料检索" })).getByRole(
+        "button",
+        { name: "搜索" },
+      ),
+    );
+
+    expect(searchProfileMock).toHaveBeenCalledWith("Go");
+    expect(await screen.findByText("2 条结果")).toBeInTheDocument();
+    expect(
+      screen.getByText("使用 Go 构建高并发交易接口。"),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("backend-profile.md").length).toBeGreaterThan(1);
   });
 
   it("switches the active Profile and refreshes dependent workspaces", async () => {

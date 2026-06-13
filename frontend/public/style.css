@@ -1345,6 +1345,194 @@ button:focus-visible {
   font-weight: 650;
 }
 
+.profile-search {
+  margin-top: 31px;
+  padding: 0 0 25px;
+  border-bottom: 1px solid var(--line);
+}
+
+.profile-search > header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.profile-search h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.profile-search header p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.profile-search header > span {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.profile-search-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.profile-search-input {
+  min-width: 0;
+  min-height: 39px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper-strong);
+  color: var(--muted);
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.profile-search-input:focus-within {
+  border-color: #9db5e1;
+  box-shadow: 0 0 0 3px rgba(37, 84, 163, 0.08);
+}
+
+.profile-search-input input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.profile-search-input input::placeholder {
+  color: #99948a;
+}
+
+.profile-search-input input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.profile-search-input button {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.profile-search-input button:hover {
+  background: #efede7;
+  color: var(--text);
+}
+
+.profile-search-message {
+  min-height: 43px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 11px;
+  padding: 9px 11px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.profile-search-message--error {
+  color: #91483c;
+}
+
+.profile-search-results {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.profile-search-result {
+  width: 100%;
+  min-height: 67px;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) minmax(120px, 0.36fr) 18px;
+  align-items: center;
+  gap: 13px;
+  padding: 9px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+
+.profile-search-result:hover {
+  background: var(--blue-faint);
+}
+
+.profile-search-result-type {
+  color: var(--blue);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.profile-search-result-copy {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.profile-search-result-copy strong,
+.profile-search-result-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-search-result-copy strong {
+  font-size: 12px;
+}
+
+.profile-search-result-copy small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.profile-search-result-source {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-search-result-source svg {
+  flex: 0 0 auto;
+}
+
+.profile-search-result > svg {
+  color: var(--muted);
+}
+
 .library-section {
   margin-top: 34px;
 }
@@ -3887,6 +4075,28 @@ button:focus-visible {
 
   .document-list-head {
     display: none;
+  }
+
+  .profile-search-form {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-search-form > .button {
+    justify-self: start;
+  }
+
+  .profile-search-result {
+    grid-template-columns: 64px minmax(0, 1fr) 18px;
+  }
+
+  .profile-search-result-source {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .profile-search-result > svg {
+    grid-column: 3;
+    grid-row: 1 / 3;
   }
 
   .document-row {

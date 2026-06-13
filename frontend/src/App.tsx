@@ -30,6 +30,7 @@ import {
     type MatchReview,
     type PDFWorkspace,
     type ProfileOverview,
+    type ProfileSearchResult,
     type ProviderSettings,
     type ResumeBlockSummary,
     type ResumeWorkspace,
@@ -43,6 +44,7 @@ import MatchReviewWorkspace, {
 } from "./MatchReviewWorkspace";
 import ProfileLibrary, {
     type ProfileFeedback,
+    type ProfileSearchStatus,
     type ProfileStatus,
 } from "./ProfileLibrary";
 import PDFPreview, {
@@ -158,6 +160,14 @@ function App() {
   const [profileError, setProfileError] = useState("");
   const [profileFeedback, setProfileFeedback] =
     useState<ProfileFeedback | null>(null);
+  const [profileSearchQuery, setProfileSearchQuery] = useState("");
+  const [profileSearchedQuery, setProfileSearchedQuery] = useState("");
+  const [profileSearchResults, setProfileSearchResults] = useState<
+    ProfileSearchResult[]
+  >([]);
+  const [profileSearchStatus, setProfileSearchStatus] =
+    useState<ProfileSearchStatus>("idle");
+  const [profileSearchError, setProfileSearchError] = useState("");
   const [isImportingProfile, setIsImportingProfile] = useState(false);
   const [jdWorkspace, setJDWorkspace] =
     useState<JDWorkspaceModel | null>(null);
@@ -176,6 +186,11 @@ function App() {
 
   const applyProfileOverview = useCallback((overview: ProfileOverview) => {
     setProfileOverview(overview);
+    setProfileSearchQuery("");
+    setProfileSearchedQuery("");
+    setProfileSearchResults([]);
+    setProfileSearchStatus("idle");
+    setProfileSearchError("");
     setSelectedProfileEvidenceId((current) => {
       if (overview.evidence.some((item) => item.id === current)) {
         return current;
@@ -531,6 +546,64 @@ function App() {
 
   const handleSelectProfileSource = (source: EvidenceSourceSummary) => {
     setSelectedProfileSourceId(source.chunkId);
+  };
+
+  const handleProfileSearchChange = (value: string) => {
+    setProfileSearchQuery(value);
+    setProfileSearchError("");
+    if (value.trim() === "") {
+      setProfileSearchedQuery("");
+      setProfileSearchResults([]);
+      setProfileSearchStatus("idle");
+    }
+  };
+
+  const handleProfileSearchClear = () => {
+    setProfileSearchQuery("");
+    setProfileSearchedQuery("");
+    setProfileSearchResults([]);
+    setProfileSearchStatus("idle");
+    setProfileSearchError("");
+  };
+
+  const handleProfileSearch = async () => {
+    const query = profileSearchQuery.trim();
+    if (query === "") {
+      handleProfileSearchClear();
+      return;
+    }
+
+    setProfileSearchStatus("loading");
+    setProfileSearchError("");
+    setProfileSearchedQuery(query);
+    try {
+      const results = await ProfileService.Search(query);
+      setProfileSearchResults(results);
+      setProfileSearchStatus("ready");
+    } catch (error) {
+      setProfileSearchResults([]);
+      setProfileSearchStatus("error");
+      setProfileSearchError(
+        error instanceof Error ? error.message : "搜索失败，请重试。",
+      );
+    }
+  };
+
+  const handleSelectProfileSearchResult = (result: ProfileSearchResult) => {
+    const evidence =
+      result.entityType === "evidence"
+        ? profileOverview?.evidence.find(
+            (item) => item.id === result.entityId,
+          )
+        : profileOverview?.evidence.find((item) =>
+            item.sources.some(
+              (source) => source.chunkId === result.sourceChunkId,
+            ),
+          );
+    if (evidence) {
+      setSelectedProfileEvidenceId(evidence.id);
+      setSelectedProfileSourceId(result.sourceChunkId);
+    }
   };
 
   const handleJDTextChange = (value: string) => {
@@ -1299,9 +1372,18 @@ function App() {
             isImporting={isImportingProfile}
             onImport={() => requestProviderAction("profile")}
             onRefresh={() => void refreshProfile()}
+            onSearch={() => void handleProfileSearch()}
+            onSearchChange={handleProfileSearchChange}
+            onSearchClear={handleProfileSearchClear}
+            onSelectSearchResult={handleSelectProfileSearchResult}
             onSelectEvidence={handleSelectProfileEvidence}
             onSelectSource={handleSelectProfileSource}
             overview={profileOverview}
+            searchError={profileSearchError}
+            searchQuery={profileSearchQuery}
+            searchResults={profileSearchResults}
+            searchedQuery={profileSearchedQuery}
+            searchStatus={profileSearchStatus}
             selectedEvidenceId={selectedProfileEvidenceId}
             selectedSourceId={selectedProfileSourceId}
             status={profileStatus}

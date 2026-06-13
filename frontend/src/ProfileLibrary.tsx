@@ -7,13 +7,16 @@ import {
   IconInfoCircle,
   IconLink,
   IconRefresh,
+  IconSearch,
   IconUpload,
+  IconX,
 } from "@tabler/icons-react";
 
 import type {
   EvidenceSourceSummary,
   EvidenceSummary,
   ProfileOverview,
+  ProfileSearchResult,
 } from "../bindings/github.com/ch1lam/autocv/internal/app";
 
 export type ProfileStatus = "loading" | "ready" | "error";
@@ -21,6 +24,7 @@ export type ProfileFeedback = {
   tone: "success" | "warning" | "info" | "error";
   text: string;
 };
+export type ProfileSearchStatus = "idle" | "loading" | "ready" | "error";
 
 type ProfileLibraryProps = {
   error: string;
@@ -28,9 +32,18 @@ type ProfileLibraryProps = {
   isImporting: boolean;
   onImport: () => void;
   onRefresh: () => void;
+  onSearch: () => void;
+  onSearchChange: (value: string) => void;
+  onSearchClear: () => void;
+  onSelectSearchResult: (result: ProfileSearchResult) => void;
   onSelectEvidence: (evidence: EvidenceSummary) => void;
   onSelectSource: (source: EvidenceSourceSummary) => void;
   overview: ProfileOverview | null;
+  searchError: string;
+  searchQuery: string;
+  searchResults: ProfileSearchResult[];
+  searchedQuery: string;
+  searchStatus: ProfileSearchStatus;
   selectedEvidenceId: string;
   selectedSourceId: string;
   status: ProfileStatus;
@@ -78,9 +91,18 @@ function ProfileLibrary({
   isImporting,
   onImport,
   onRefresh,
+  onSearch,
+  onSearchChange,
+  onSearchClear,
+  onSelectSearchResult,
   onSelectEvidence,
   onSelectSource,
   overview,
+  searchError,
+  searchQuery,
+  searchResults,
+  searchedQuery,
+  searchStatus,
   selectedEvidenceId,
   selectedSourceId,
   status,
@@ -187,6 +209,116 @@ function ProfileLibrary({
                 <dd>{overview.defaultLanguage}</dd>
               </div>
             </dl>
+
+            <section aria-label="资料检索" className="profile-search">
+              <header>
+                <div>
+                  <h2>搜索资料</h2>
+                  <p>同时检索原始 Markdown 片段和已提取的 Evidence。</p>
+                </div>
+                {searchedQuery && searchStatus !== "loading" && (
+                  <span>{searchResults.length} 条结果</span>
+                )}
+              </header>
+              <form
+                className="profile-search-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  onSearch();
+                }}
+              >
+                <div className="profile-search-input">
+                  <IconSearch aria-hidden="true" size={18} stroke={1.55} />
+                  <input
+                    aria-label="搜索资料库"
+                    maxLength={200}
+                    onChange={(event) => onSearchChange(event.target.value)}
+                    placeholder="搜索技能、项目或原文片段"
+                    type="search"
+                    value={searchQuery}
+                  />
+                  {searchQuery && (
+                    <button
+                      aria-label="清除搜索"
+                      onClick={onSearchClear}
+                      type="button"
+                    >
+                      <IconX aria-hidden="true" size={16} stroke={1.6} />
+                    </button>
+                  )}
+                </div>
+                <button
+                  className="button button--secondary"
+                  disabled={
+                    searchStatus === "loading" || searchQuery.trim() === ""
+                  }
+                  type="submit"
+                >
+                  {searchStatus === "loading" ? (
+                    <IconRefresh
+                      aria-hidden="true"
+                      className="is-spinning"
+                      size={17}
+                      stroke={1.6}
+                    />
+                  ) : (
+                    <IconSearch aria-hidden="true" size={17} stroke={1.6} />
+                  )}
+                  {searchStatus === "loading" ? "检索中" : "搜索"}
+                </button>
+              </form>
+
+              {searchStatus === "error" && (
+                <div className="profile-search-message profile-search-message--error">
+                  <IconAlertCircle aria-hidden="true" size={17} stroke={1.6} />
+                  <span>{searchError || "搜索失败，请重试。"}</span>
+                </div>
+              )}
+
+              {searchStatus === "ready" &&
+                searchedQuery &&
+                searchResults.length === 0 && (
+                  <div className="profile-search-message">
+                    没有找到“{searchedQuery}”，可以尝试更短的关键词。
+                  </div>
+                )}
+
+              {searchResults.length > 0 && (
+                <div className="profile-search-results">
+                  {searchResults.map((result, index) => (
+                    <button
+                      className="profile-search-result"
+                      key={`${result.entityType}-${result.entityId}-${result.sourceChunkId}-${index}`}
+                      onClick={() => onSelectSearchResult(result)}
+                      type="button"
+                    >
+                      <span className="profile-search-result-type">
+                        {result.entityType === "evidence"
+                          ? "Evidence"
+                          : "原文片段"}
+                      </span>
+                      <span className="profile-search-result-copy">
+                        <strong>{result.title}</strong>
+                        <small>{result.snippet}</small>
+                      </span>
+                      <span className="profile-search-result-source">
+                        <IconFileText
+                          aria-hidden="true"
+                          size={14}
+                          stroke={1.55}
+                        />
+                        {result.documentName}
+                      </span>
+                      <IconChevronRight
+                        aria-hidden="true"
+                        size={17}
+                        stroke={1.55}
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
 
             <section className="library-section">
               <header className="library-section-heading">
