@@ -6,6 +6,7 @@ type Profile struct {
 	ID              string
 	Name            string
 	DefaultLanguage string
+	Active          bool
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }

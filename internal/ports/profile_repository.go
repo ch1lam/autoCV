@@ -21,6 +21,10 @@ type ProfileRepository interface {
 		string,
 		time.Time,
 	) (domain.Profile, error)
+	CreateProfile(context.Context, domain.Profile) error
+	ListProfiles(context.Context) ([]domain.Profile, error)
+	GetActiveProfile(context.Context) (domain.Profile, bool, error)
+	SetActiveProfile(context.Context, string) (domain.Profile, error)
 	FindDocumentByHash(
 		context.Context,
 		string,

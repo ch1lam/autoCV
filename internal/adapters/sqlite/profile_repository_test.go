@@ -32,6 +32,71 @@ func TestProfileRepositoryEnsuresOneDefaultProfile(t *testing.T) {
 	if second.Name != "Main Profile" {
 		t.Fatalf("expected original profile to remain unchanged, got %q", second.Name)
 	}
+	if !second.Active {
+		t.Fatal("expected default profile to be active")
+	}
+}
+
+func TestProfileRepositoryCreatesListsAndSelectsProfiles(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDatabase(t, ctx, filepath.Join(t.TempDir(), "profiles.db"))
+	defer db.Close()
+	repository := NewProfileRepository(db)
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+
+	mainProfile, err := repository.EnsureDefaultProfile(
+		ctx,
+		"Main Profile",
+		"zh-CN",
+		now,
+	)
+	if err != nil {
+		t.Fatalf("ensure profile: %v", err)
+	}
+	englishProfile := domain.Profile{
+		ID:              "profile-en",
+		Name:            "English Profile",
+		DefaultLanguage: "en",
+		Active:          true,
+		CreatedAt:       now.Add(time.Hour),
+		UpdatedAt:       now.Add(time.Hour),
+	}
+	if err := repository.CreateProfile(ctx, englishProfile); err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+
+	active, found, err := repository.GetActiveProfile(ctx)
+	if err != nil {
+		t.Fatalf("get active profile: %v", err)
+	}
+	if !found || active.ID != englishProfile.ID {
+		t.Fatalf("expected created profile to be active, got %#v", active)
+	}
+	profiles, err := repository.ListProfiles(ctx)
+	if err != nil {
+		t.Fatalf("list profiles: %v", err)
+	}
+	if len(profiles) != 2 || profiles[0].ID != englishProfile.ID {
+		t.Fatalf("expected active profile first, got %#v", profiles)
+	}
+
+	selected, err := repository.SetActiveProfile(ctx, mainProfile.ID)
+	if err != nil {
+		t.Fatalf("select main profile: %v", err)
+	}
+	if !selected.Active || selected.ID != mainProfile.ID {
+		t.Fatalf("expected main profile selection, got %#v", selected)
+	}
+	if _, err := repository.SetActiveProfile(ctx, "missing-profile"); err == nil {
+		t.Fatal("expected missing profile selection to fail")
+	}
+	active, found, err = repository.GetActiveProfile(ctx)
+	if err != nil {
+		t.Fatalf("get active profile after failed selection: %v", err)
+	}
+	if !found || active.ID != mainProfile.ID {
+		t.Fatalf("expected failed selection to preserve active profile")
+	}
 }
 
 func TestProfileRepositorySavesImportedDocumentAtomically(t *testing.T) {

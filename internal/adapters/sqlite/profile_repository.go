@@ -35,8 +35,14 @@ func (repository *ProfileRepository) EnsureDefaultProfile(
 	if _, err := repository.db.ExecContext(
 		ctx,
 		`INSERT OR IGNORE INTO profiles(
-			id, name, default_language, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?)`,
+			id, name, default_language, is_active, created_at, updated_at
+		) VALUES (
+			?, ?, ?,
+			CASE WHEN EXISTS(
+				SELECT 1 FROM profiles WHERE is_active = 1
+			) THEN 0 ELSE 1 END,
+			?, ?
+		)`,
 		defaultProfileID,
 		name,
 		language,
@@ -46,6 +52,127 @@ func (repository *ProfileRepository) EnsureDefaultProfile(
 		return domain.Profile{}, fmt.Errorf("ensure default profile: %w", err)
 	}
 	return repository.profileByID(ctx, defaultProfileID)
+}
+
+func (repository *ProfileRepository) CreateProfile(
+	ctx context.Context,
+	profile domain.Profile,
+) error {
+	tx, err := repository.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin create profile transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	if profile.Active {
+		if _, err := tx.ExecContext(
+			ctx,
+			"UPDATE profiles SET is_active = 0 WHERE is_active = 1",
+		); err != nil {
+			return fmt.Errorf("clear active profile: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO profiles(
+			id, name, default_language, is_active, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?)`,
+		profile.ID,
+		profile.Name,
+		profile.DefaultLanguage,
+		profile.Active,
+		formatTime(profile.CreatedAt),
+		formatTime(profile.UpdatedAt),
+	); err != nil {
+		return fmt.Errorf("insert profile: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit create profile: %w", err)
+	}
+	return nil
+}
+
+func (repository *ProfileRepository) ListProfiles(
+	ctx context.Context,
+) ([]domain.Profile, error) {
+	rows, err := repository.db.QueryContext(
+		ctx,
+		`SELECT id, name, default_language, is_active, created_at, updated_at
+		   FROM profiles
+		  ORDER BY is_active DESC, created_at, id`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list profiles: %w", err)
+	}
+	defer rows.Close()
+
+	profiles := make([]domain.Profile, 0)
+	for rows.Next() {
+		profile, err := scanProfile(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan profile: %w", err)
+		}
+		profiles = append(profiles, profile)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate profiles: %w", err)
+	}
+	return profiles, nil
+}
+
+func (repository *ProfileRepository) GetActiveProfile(
+	ctx context.Context,
+) (domain.Profile, bool, error) {
+	profile, err := scanProfile(repository.db.QueryRowContext(
+		ctx,
+		`SELECT id, name, default_language, is_active, created_at, updated_at
+		   FROM profiles
+		  WHERE is_active = 1`,
+	))
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.Profile{}, false, nil
+	}
+	if err != nil {
+		return domain.Profile{}, false, fmt.Errorf("query active profile: %w", err)
+	}
+	return profile, true, nil
+}
+
+func (repository *ProfileRepository) SetActiveProfile(
+	ctx context.Context,
+	profileID string,
+) (domain.Profile, error) {
+	tx, err := repository.db.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.Profile{}, fmt.Errorf("begin select profile transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(
+		ctx,
+		"UPDATE profiles SET is_active = 0 WHERE is_active = 1",
+	); err != nil {
+		return domain.Profile{}, fmt.Errorf("clear active profile: %w", err)
+	}
+	result, err := tx.ExecContext(
+		ctx,
+		"UPDATE profiles SET is_active = 1 WHERE id = ?",
+		profileID,
+	)
+	if err != nil {
+		return domain.Profile{}, fmt.Errorf("select profile: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return domain.Profile{}, fmt.Errorf("read selected profile result: %w", err)
+	}
+	if affected == 0 {
+		return domain.Profile{}, fmt.Errorf("profile %q not found", profileID)
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.Profile{}, fmt.Errorf("commit selected profile: %w", err)
+	}
+	return repository.profileByID(ctx, profileID)
 }
 
 func (repository *ProfileRepository) FindDocumentByHash(
@@ -292,24 +419,33 @@ func (repository *ProfileRepository) profileByID(
 	ctx context.Context,
 	id string,
 ) (domain.Profile, error) {
-	var profile domain.Profile
-	var createdAt string
-	var updatedAt string
-	err := repository.db.QueryRowContext(
+	profile, err := scanProfile(repository.db.QueryRowContext(
 		ctx,
-		`SELECT id, name, default_language, created_at, updated_at
+		`SELECT id, name, default_language, is_active, created_at, updated_at
 		   FROM profiles
 		  WHERE id = ?`,
 		id,
-	).Scan(
+	))
+	if err != nil {
+		return domain.Profile{}, fmt.Errorf("query profile: %w", err)
+	}
+	return profile, nil
+}
+
+func scanProfile(row scanner) (domain.Profile, error) {
+	var profile domain.Profile
+	var createdAt string
+	var updatedAt string
+	err := row.Scan(
 		&profile.ID,
 		&profile.Name,
 		&profile.DefaultLanguage,
+		&profile.Active,
 		&createdAt,
 		&updatedAt,
 	)
 	if err != nil {
-		return domain.Profile{}, fmt.Errorf("query profile: %w", err)
+		return domain.Profile{}, err
 	}
 	profile.CreatedAt, err = parseTime(createdAt)
 	if err != nil {
