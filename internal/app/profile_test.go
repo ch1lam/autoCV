@@ -134,6 +134,52 @@ func TestProfileServiceDetectsDuplicateMarkdown(t *testing.T) {
 	}
 }
 
+func TestProfileServiceImportsMultipleDocumentsIntoOneProfile(t *testing.T) {
+	service, _, _, _, _ := newProfileServiceTest(t)
+
+	first, err := service.ImportMarkdown()
+	if err != nil {
+		t.Fatalf("import first Markdown: %v", err)
+	}
+	service.picker = fakeMarkdownPicker{
+		selected: ports.SelectedMarkdown{
+			OriginalName: "project-notes.md",
+			Contents: []byte(
+				"# 项目记录\n\n使用 PostgreSQL 和 SQLite 保存任务状态。\n",
+			),
+		},
+		accepted: true,
+	}
+	second, err := service.ImportMarkdown()
+	if err != nil {
+		t.Fatalf("import second Markdown: %v", err)
+	}
+	if second.Duplicate || second.Document.ID == first.Document.ID {
+		t.Fatalf("expected a distinct second document, got %#v", second)
+	}
+
+	overview, err := service.GetOverview()
+	if err != nil {
+		t.Fatalf("get multi-document overview: %v", err)
+	}
+	if len(overview.Documents) != 2 {
+		t.Fatalf("expected two documents, got %#v", overview.Documents)
+	}
+	documentNames := map[string]bool{}
+	for _, item := range overview.Evidence {
+		for _, source := range item.Sources {
+			documentNames[source.DocumentName] = true
+		}
+	}
+	if !documentNames["backend-profile.md"] ||
+		!documentNames["project-notes.md"] {
+		t.Fatalf(
+			"expected evidence from both documents, got %#v",
+			documentNames,
+		)
+	}
+}
+
 func TestProfileServiceCreatesSelectsAndIsolatesProfiles(t *testing.T) {
 	service, _, _, _, _ := newProfileServiceTest(t)
 
