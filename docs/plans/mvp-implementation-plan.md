@@ -237,15 +237,17 @@ Markdown 职业资料
 
 ## 7. M2：可复用资料库
 
+状态：进行中（2026-06-13）
+
 ### 7.1 目标
 
 让 Profile 从“一份 Markdown”升级为可长期维护的本地资料库。
 
 ### 7.2 任务
 
-- [ ] 支持多个 Profile。
-- [ ] 支持一个 Profile 中的多份 Source Document。
-- [ ] 增加 `source_chunks`、`evidence` 和 `evidence_sources` 表。
+- [x] 支持多个 Profile。
+- [x] 支持一个 Profile 中的多份 Source Document。
+- [x] 增加 `source_chunks`、`evidence` 和 `evidence_sources` 表。
 - [ ] 建立 FTS5 索引。
 - [ ] 支持 Evidence 的查看、编辑和用户确认。
 - [ ] 处理冲突信息和重复 Evidence。
