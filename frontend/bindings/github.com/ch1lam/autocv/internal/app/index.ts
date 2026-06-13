@@ -36,6 +36,7 @@ export {
     MatchReview,
     PDFWorkspace,
     ProfileOverview,
+    ProfileSearchResult,
     ProfileSummary,
     ProviderCancelResult,
     ProviderDataSummary,

@@ -259,6 +259,7 @@ func newMatchServiceFixtureFromFiles(
 	provider := fakeprovider.New()
 	profileService := NewProfileService(
 		profileRepository,
+		sqliteadapter.NewProfileSearch(db),
 		markdownparser.New(),
 		provider,
 		files,

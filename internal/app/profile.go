@@ -23,6 +23,7 @@ const (
 
 type ProfileService struct {
 	repository ports.ProfileRepository
+	search     ports.ProfileSearch
 	parser     ports.DocumentParser
 	extractor  ports.ProfileExtractor
 	files      ports.ManagedFileStore
@@ -73,6 +74,16 @@ type EvidenceSourceSummary struct {
 	QuoteEnd     int    `json:"quoteEnd"`
 }
 
+type ProfileSearchResult struct {
+	EntityType    string `json:"entityType"`
+	EntityID      string `json:"entityId"`
+	DocumentID    string `json:"documentId"`
+	SourceChunkID string `json:"sourceChunkId"`
+	DocumentName  string `json:"documentName"`
+	Title         string `json:"title"`
+	Snippet       string `json:"snippet"`
+}
+
 type ImportMarkdownResult struct {
 	Cancelled     bool                  `json:"cancelled"`
 	Duplicate     bool                  `json:"duplicate"`
@@ -84,6 +95,7 @@ type ImportMarkdownResult struct {
 
 func NewProfileService(
 	repository ports.ProfileRepository,
+	search ports.ProfileSearch,
 	parser ports.DocumentParser,
 	extractor ports.ProfileExtractor,
 	files ports.ManagedFileStore,
@@ -92,6 +104,7 @@ func NewProfileService(
 ) *ProfileService {
 	return &ProfileService{
 		repository: repository,
+		search:     search,
 		parser:     parser,
 		extractor:  extractor,
 		files:      files,
@@ -121,6 +134,12 @@ func (service *ProfileService) SelectProfile(
 	return service.selectProfile(context.Background(), profileID)
 }
 
+func (service *ProfileService) Search(
+	query string,
+) ([]ProfileSearchResult, error) {
+	return service.searchProfile(context.Background(), query)
+}
+
 func (service *ProfileService) ImportMarkdown() (ImportMarkdownResult, error) {
 	selected, accepted, err := service.picker.PickMarkdown()
 	if err != nil {
@@ -130,6 +149,46 @@ func (service *ProfileService) ImportMarkdown() (ImportMarkdownResult, error) {
 		return ImportMarkdownResult{Cancelled: true}, nil
 	}
 	return service.importMarkdown(context.Background(), selected)
+}
+
+func (service *ProfileService) searchProfile(
+	ctx context.Context,
+	query string,
+) ([]ProfileSearchResult, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return []ProfileSearchResult{}, nil
+	}
+	if len([]rune(query)) > 200 {
+		return nil, errors.New("Search query must be 200 characters or fewer")
+	}
+
+	profile, err := resolveActiveProfile(
+		ctx,
+		service.repository,
+		service.clock.Now(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	results, err := service.search.Search(ctx, profile.ID, query, 20)
+	if err != nil {
+		return nil, err
+	}
+
+	summaries := make([]ProfileSearchResult, 0, len(results))
+	for _, result := range results {
+		summaries = append(summaries, ProfileSearchResult{
+			EntityType:    result.EntityType,
+			EntityID:      result.EntityID,
+			DocumentID:    result.DocumentID,
+			SourceChunkID: result.SourceChunkID,
+			DocumentName:  result.DocumentName,
+			Title:         result.Title,
+			Snippet:       result.Snippet,
+		})
+	}
+	return summaries, nil
 }
 
 func (service *ProfileService) getOverview(

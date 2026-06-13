@@ -27,6 +27,12 @@ export function ImportMarkdown(): $CancellablePromise<$models.ImportMarkdownResu
     });
 }
 
+export function Search(query: string): $CancellablePromise<$models.ProfileSearchResult[]> {
+    return $Call.ByID(3916904059, query).then(($result: any) => {
+        return $$createType3($result);
+    });
+}
+
 export function SelectProfile(profileID: string): $CancellablePromise<$models.ProfileOverview> {
     return $Call.ByID(1871072508, profileID).then(($result: any) => {
         return $$createType0($result);
@@ -36,3 +42,5 @@ export function SelectProfile(profileID: string): $CancellablePromise<$models.Pr
 // Private type creation functions
 const $$createType0 = $models.ProfileOverview.createFrom;
 const $$createType1 = $models.ImportMarkdownResult.createFrom;
+const $$createType2 = $models.ProfileSearchResult.createFrom;
+const $$createType3 = $Create.Array($$createType2);

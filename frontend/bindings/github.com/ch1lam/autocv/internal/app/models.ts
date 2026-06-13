@@ -736,6 +736,51 @@ export class ProfileOverview {
     }
 }
 
+export class ProfileSearchResult {
+    "entityType": string;
+    "entityId": string;
+    "documentId": string;
+    "sourceChunkId": string;
+    "documentName": string;
+    "title": string;
+    "snippet": string;
+
+    /** Creates a new ProfileSearchResult instance. */
+    constructor($$source: Partial<ProfileSearchResult> = {}) {
+        if (!("entityType" in $$source)) {
+            this["entityType"] = "";
+        }
+        if (!("entityId" in $$source)) {
+            this["entityId"] = "";
+        }
+        if (!("documentId" in $$source)) {
+            this["documentId"] = "";
+        }
+        if (!("sourceChunkId" in $$source)) {
+            this["sourceChunkId"] = "";
+        }
+        if (!("documentName" in $$source)) {
+            this["documentName"] = "";
+        }
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("snippet" in $$source)) {
+            this["snippet"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ProfileSearchResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ProfileSearchResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ProfileSearchResult($$parsedSource as Partial<ProfileSearchResult>);
+    }
+}
+
 export class ProfileSummary {
     "id": string;
     "name": string;

@@ -95,6 +95,7 @@ func TestProfileServiceImportsAndRestoresMarkdownProfile(t *testing.T) {
 
 	restarted := NewProfileService(
 		repository,
+		service.search,
 		markdownparser.New(),
 		fakeprovider.New(),
 		files,
@@ -177,6 +178,58 @@ func TestProfileServiceImportsMultipleDocumentsIntoOneProfile(t *testing.T) {
 			"expected evidence from both documents, got %#v",
 			documentNames,
 		)
+	}
+}
+
+func TestProfileServiceSearchesActiveProfileContent(t *testing.T) {
+	service, _, _, _, _ := newProfileServiceTest(t)
+	if _, err := service.ImportMarkdown(); err != nil {
+		t.Fatalf("import Markdown: %v", err)
+	}
+
+	results, err := service.Search("Postgre")
+	if err != nil {
+		t.Fatalf("search profile: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("expected search results")
+	}
+	for _, result := range results {
+		if result.DocumentName != "backend-profile.md" ||
+			result.SourceChunkID == "" ||
+			result.Snippet == "" {
+			t.Fatalf("unexpected search result %#v", result)
+		}
+	}
+
+	other, err := service.CreateProfile("其他岗位", "zh-CN")
+	if err != nil {
+		t.Fatalf("create second profile: %v", err)
+	}
+	if other.ProfileID == "" {
+		t.Fatal("expected created profile id")
+	}
+	isolated, err := service.Search("Postgre")
+	if err != nil {
+		t.Fatalf("search empty profile: %v", err)
+	}
+	if len(isolated) != 0 {
+		t.Fatalf("expected active profile isolation, got %#v", isolated)
+	}
+}
+
+func TestProfileServiceValidatesSearchQuery(t *testing.T) {
+	service, _, _, _, _ := newProfileServiceTest(t)
+
+	empty, err := service.Search("  ")
+	if err != nil {
+		t.Fatalf("search empty query: %v", err)
+	}
+	if len(empty) != 0 {
+		t.Fatalf("expected no empty query results, got %#v", empty)
+	}
+	if _, err := service.Search(string(make([]rune, 201))); err == nil {
+		t.Fatal("expected long search query error")
 	}
 }
 
@@ -319,6 +372,7 @@ func newProfileServiceTest(t *testing.T) (
 
 	service := NewProfileService(
 		repository,
+		sqliteadapter.NewProfileSearch(db),
 		markdownparser.New(),
 		fakeprovider.New(),
 		files,

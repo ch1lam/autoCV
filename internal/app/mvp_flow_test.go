@@ -173,6 +173,7 @@ func testM1SyntheticScenario(
 
 	restartedProfile := NewProfileService(
 		fixture.profileRepository,
+		sqliteadapter.NewProfileSearch(fixture.db),
 		markdownparser.New(),
 		fakeprovider.New(),
 		fixture.files,

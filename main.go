@@ -117,6 +117,7 @@ func run() error {
 	)))
 	app.RegisterService(application.NewService(appservice.NewProfileService(
 		profileRepository,
+		sqlite.NewProfileSearch(db),
 		markdownparser.New(),
 		provider,
 		managedFiles,
