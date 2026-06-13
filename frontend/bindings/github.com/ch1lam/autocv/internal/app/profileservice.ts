@@ -9,6 +9,12 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
+export function CreateProfile(name: string, defaultLanguage: string): $CancellablePromise<$models.ProfileOverview> {
+    return $Call.ByID(1258940892, name, defaultLanguage).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
 export function GetOverview(): $CancellablePromise<$models.ProfileOverview> {
     return $Call.ByID(2947916482).then(($result: any) => {
         return $$createType0($result);
@@ -18,6 +24,12 @@ export function GetOverview(): $CancellablePromise<$models.ProfileOverview> {
 export function ImportMarkdown(): $CancellablePromise<$models.ImportMarkdownResult> {
     return $Call.ByID(1029681327).then(($result: any) => {
         return $$createType1($result);
+    });
+}
+
+export function SelectProfile(profileID: string): $CancellablePromise<$models.ProfileOverview> {
+    return $Call.ByID(1871072508, profileID).then(($result: any) => {
+        return $$createType0($result);
     });
 }
 

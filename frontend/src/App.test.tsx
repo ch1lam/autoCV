@@ -8,6 +8,7 @@ const {
   analyzeMatchesMock,
   analyzeJDMock,
   cancelActiveProviderMock,
+  createProfileMock,
   exportMarkdownMock,
   exportPDFMock,
   getPDFWorkspaceMock,
@@ -21,12 +22,14 @@ const {
   getSettingsMock,
   saveJDDraftMock,
   saveProviderMock,
+  selectProfileMock,
   setResumeBlockLockedMock,
   updateResumeMarkdownMock,
 } = vi.hoisted(() => ({
   analyzeMatchesMock: vi.fn(),
   analyzeJDMock: vi.fn(),
   cancelActiveProviderMock: vi.fn(),
+  createProfileMock: vi.fn(),
   exportMarkdownMock: vi.fn(),
   exportPDFMock: vi.fn(),
   generateResumeMock: vi.fn(),
@@ -40,6 +43,7 @@ const {
   renderPDFMock: vi.fn(),
   saveJDDraftMock: vi.fn(),
   saveProviderMock: vi.fn(),
+  selectProfileMock: vi.fn(),
   setResumeBlockLockedMock: vi.fn(),
   updateResumeMarkdownMock: vi.fn(),
 }));
@@ -64,8 +68,10 @@ vi.mock("../bindings/github.com/ch1lam/autocv/internal/app", () => ({
     Render: renderPDFMock,
   },
   ProfileService: {
+    CreateProfile: createProfileMock,
     GetOverview: getOverviewMock,
     ImportMarkdown: importMarkdownMock,
+    SelectProfile: selectProfileMock,
   },
   ProviderControlService: {
     CancelActive: cancelActiveProviderMock,
@@ -86,6 +92,20 @@ const profileOverview = {
   profileId: "profile-1",
   name: "主资料库",
   defaultLanguage: "zh-CN",
+  profiles: [
+    {
+      id: "profile-1",
+      name: "主资料库",
+      defaultLanguage: "zh-CN",
+      active: true,
+    },
+    {
+      id: "profile-2",
+      name: "English applications",
+      defaultLanguage: "en",
+      active: false,
+    },
+  ],
   documents: [
     {
       id: "document-1",
@@ -458,6 +478,7 @@ describe("Paper Trail match review", () => {
       task: "jd_analysis",
       message: "已发送取消请求；当前步骤结束后可以直接重试。",
     });
+    createProfileMock.mockReset();
     getJDWorkspaceMock.mockReset().mockResolvedValue(jdWorkspace);
     getMatchReviewMock.mockReset().mockResolvedValue(matchReview);
     getOverviewMock.mockReset().mockResolvedValue(profileOverview);
@@ -516,6 +537,7 @@ describe("Paper Trail match review", () => {
             : providerSettings.configurationNote,
       }),
     );
+    selectProfileMock.mockReset();
   });
 
   it("filters requirement rows by match status", async () => {
@@ -803,6 +825,95 @@ describe("Paper Trail match review", () => {
       await screen.findByText(
         "已导入 backend-profile.md，生成 1 条可追溯 Evidence。",
       ),
+    ).toBeInTheDocument();
+  });
+
+  it("switches the active Profile and refreshes dependent workspaces", async () => {
+    const user = userEvent.setup();
+    selectProfileMock.mockResolvedValue({
+      ...profileOverview,
+      profileId: "profile-2",
+      name: "English applications",
+      defaultLanguage: "en",
+      profiles: profileOverview.profiles.map((profile) => ({
+        ...profile,
+        active: profile.id === "profile-2",
+      })),
+      documents: [],
+      evidence: [],
+    });
+    render(<App />);
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /李志林.*主资料库/,
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "选择 English applications",
+      }),
+    );
+
+    expect(selectProfileMock).toHaveBeenCalledWith("profile-2");
+    expect(
+      await screen.findByRole("button", {
+        name: /李志林.*English applications/,
+      }),
+    ).toBeInTheDocument();
+    expect(getMatchReviewMock).toHaveBeenCalledTimes(2);
+    expect(getResumeWorkspaceMock).toHaveBeenCalledTimes(2);
+    expect(getPDFWorkspaceMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("creates a Profile from the existing topbar workflow", async () => {
+    const user = userEvent.setup();
+    createProfileMock.mockResolvedValue({
+      ...profileOverview,
+      profileId: "profile-3",
+      name: "海外岗位",
+      defaultLanguage: "en",
+      profiles: [
+        ...profileOverview.profiles.map((profile) => ({
+          ...profile,
+          active: false,
+        })),
+        {
+          id: "profile-3",
+          name: "海外岗位",
+          defaultLanguage: "en",
+          active: true,
+        },
+      ],
+      documents: [],
+      evidence: [],
+    });
+    render(<App />);
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /李志林.*主资料库/,
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "新建资料库" }));
+    const dialog = screen.getByRole("dialog", { name: "创建独立资料库" });
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "资料库名称" }),
+      "海外岗位",
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "English" }),
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "创建并切换" }),
+    );
+
+    expect(createProfileMock).toHaveBeenCalledWith("海外岗位", "en");
+    expect(
+      await screen.findByRole("heading", { name: "海外岗位" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("已创建 海外岗位，可以开始导入 Markdown 资料。"),
     ).toBeInTheDocument();
   });
 

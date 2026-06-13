@@ -687,6 +687,7 @@ export class ProfileOverview {
     "profileId": string;
     "name": string;
     "defaultLanguage": string;
+    "profiles": ProfileSummary[];
     "documents": SourceDocumentSummary[];
     "evidence": EvidenceSummary[];
 
@@ -700,6 +701,9 @@ export class ProfileOverview {
         }
         if (!("defaultLanguage" in $$source)) {
             this["defaultLanguage"] = "";
+        }
+        if (!("profiles" in $$source)) {
+            this["profiles"] = [];
         }
         if (!("documents" in $$source)) {
             this["documents"] = [];
@@ -715,16 +719,53 @@ export class ProfileOverview {
      * Creates a new ProfileOverview instance from a string or object.
      */
     static createFrom($$source: any = {}): ProfileOverview {
-        const $$createField3_0 = $$createType15;
+        const $$createField3_0 = $$createType16;
         const $$createField4_0 = $$createType17;
+        const $$createField5_0 = $$createType19;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("profiles" in $$parsedSource) {
+            $$parsedSource["profiles"] = $$createField3_0($$parsedSource["profiles"]);
+        }
         if ("documents" in $$parsedSource) {
-            $$parsedSource["documents"] = $$createField3_0($$parsedSource["documents"]);
+            $$parsedSource["documents"] = $$createField4_0($$parsedSource["documents"]);
         }
         if ("evidence" in $$parsedSource) {
-            $$parsedSource["evidence"] = $$createField4_0($$parsedSource["evidence"]);
+            $$parsedSource["evidence"] = $$createField5_0($$parsedSource["evidence"]);
         }
         return new ProfileOverview($$parsedSource as Partial<ProfileOverview>);
+    }
+}
+
+export class ProfileSummary {
+    "id": string;
+    "name": string;
+    "defaultLanguage": string;
+    "active": boolean;
+
+    /** Creates a new ProfileSummary instance. */
+    constructor($$source: Partial<ProfileSummary> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("defaultLanguage" in $$source)) {
+            this["defaultLanguage"] = "";
+        }
+        if (!("active" in $$source)) {
+            this["active"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ProfileSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ProfileSummary {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ProfileSummary($$parsedSource as Partial<ProfileSummary>);
     }
 }
 
@@ -830,8 +871,8 @@ export class ProviderSettings {
      * Creates a new ProviderSettings instance from a string or object.
      */
     static createFrom($$source: any = {}): ProviderSettings {
-        const $$createField5_0 = $$createType19;
-        const $$createField6_0 = $$createType19;
+        const $$createField5_0 = $$createType21;
+        const $$createField6_0 = $$createType21;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("sentContentTypes" in $$parsedSource) {
             $$parsedSource["sentContentTypes"] = $$createField5_0($$parsedSource["sentContentTypes"]);
@@ -895,7 +936,7 @@ export class RequirementMatchSummary {
      * Creates a new RequirementMatchSummary instance from a string or object.
      */
     static createFrom($$source: any = {}): RequirementMatchSummary {
-        const $$createField9_0 = $$createType21;
+        const $$createField9_0 = $$createType23;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("evidence" in $$parsedSource) {
             $$parsedSource["evidence"] = $$createField9_0($$parsedSource["evidence"]);
@@ -948,7 +989,7 @@ export class ResumeBlockSummary {
      * Creates a new ResumeBlockSummary instance from a string or object.
      */
     static createFrom($$source: any = {}): ResumeBlockSummary {
-        const $$createField7_0 = $$createType21;
+        const $$createField7_0 = $$createType23;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("evidence" in $$parsedSource) {
             $$parsedSource["evidence"] = $$createField7_0($$parsedSource["evidence"]);
@@ -1031,7 +1072,7 @@ export class ResumeWorkspace {
     static createFrom($$source: any = {}): ResumeWorkspace {
         const $$createField3_0 = $$createType3;
         const $$createField13_0 = $$createType3;
-        const $$createField14_0 = $$createType23;
+        const $$createField14_0 = $$createType25;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("exportIssues" in $$parsedSource) {
             $$parsedSource["exportIssues"] = $$createField3_0($$parsedSource["exportIssues"]);
@@ -1132,12 +1173,14 @@ const $$createType11 = MatchDimensionSummary.createFrom;
 const $$createType12 = $Create.Array($$createType11);
 const $$createType13 = RequirementMatchSummary.createFrom;
 const $$createType14 = $Create.Array($$createType13);
-const $$createType15 = $Create.Array($$createType2);
-const $$createType16 = EvidenceSummary.createFrom;
-const $$createType17 = $Create.Array($$createType16);
-const $$createType18 = ProviderDataSummary.createFrom;
+const $$createType15 = ProfileSummary.createFrom;
+const $$createType16 = $Create.Array($$createType15);
+const $$createType17 = $Create.Array($$createType2);
+const $$createType18 = EvidenceSummary.createFrom;
 const $$createType19 = $Create.Array($$createType18);
-const $$createType20 = MatchEvidenceSummary.createFrom;
+const $$createType20 = ProviderDataSummary.createFrom;
 const $$createType21 = $Create.Array($$createType20);
-const $$createType22 = ResumeBlockSummary.createFrom;
+const $$createType22 = MatchEvidenceSummary.createFrom;
 const $$createType23 = $Create.Array($$createType22);
+const $$createType24 = ResumeBlockSummary.createFrom;
+const $$createType25 = $Create.Array($$createType24);

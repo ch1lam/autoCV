@@ -6,6 +6,7 @@ import {
     IconFileDescription,
     IconFileText,
     IconFileTypePdf,
+    IconPlus,
     IconRefresh,
     IconSettings,
     IconTargetArrow,
@@ -100,6 +101,11 @@ function App() {
   const [health, setHealth] = useState<HealthState>("checking");
   const [activeNav, setActiveNav] = useState("匹配审阅");
   const [profileOpen, setProfileOpen] = useState(false);
+  const [createProfileOpen, setCreateProfileOpen] = useState(false);
+  const [newProfileName, setNewProfileName] = useState("");
+  const [newProfileLanguage, setNewProfileLanguage] = useState("zh-CN");
+  const [profileManagementError, setProfileManagementError] = useState("");
+  const [isManagingProfile, setIsManagingProfile] = useState(false);
   const [matchReview, setMatchReview] = useState<MatchReview | null>(null);
   const [matchStatus, setMatchStatus] =
     useState<MatchWorkspaceStatus>("loading");
@@ -168,36 +174,41 @@ function App() {
   const [selectedProfileSourceId, setSelectedProfileSourceId] = useState("");
   const noticeTimer = useRef<number>();
 
+  const applyProfileOverview = useCallback((overview: ProfileOverview) => {
+    setProfileOverview(overview);
+    setSelectedProfileEvidenceId((current) => {
+      if (overview.evidence.some((item) => item.id === current)) {
+        return current;
+      }
+      return overview.evidence[0]?.id ?? "";
+    });
+    setSelectedProfileSourceId((current) => {
+      if (
+        overview.evidence.some((item) =>
+          item.sources.some((source) => source.chunkId === current),
+        )
+      ) {
+        return current;
+      }
+      return overview.evidence[0]?.sources[0]?.chunkId ?? "";
+    });
+    setProfileStatus("ready");
+    setProfileError("");
+  }, []);
+
   const refreshProfile = useCallback(async () => {
     setProfileStatus("loading");
     setProfileError("");
     try {
       const overview = await ProfileService.GetOverview();
-      setProfileOverview(overview);
-      setSelectedProfileEvidenceId((current) => {
-        if (overview.evidence.some((item) => item.id === current)) {
-          return current;
-        }
-        return overview.evidence[0]?.id ?? "";
-      });
-      setSelectedProfileSourceId((current) => {
-        if (
-          overview.evidence.some((item) =>
-            item.sources.some((source) => source.chunkId === current),
-          )
-        ) {
-          return current;
-        }
-        return overview.evidence[0]?.sources[0]?.chunkId ?? "";
-      });
-      setProfileStatus("ready");
+      applyProfileOverview(overview);
     } catch (error) {
       setProfileStatus("error");
       setProfileError(
         error instanceof Error ? error.message : "本地资料服务暂不可用。",
       );
     }
-  }, []);
+  }, [applyProfileOverview]);
 
   const applyJDWorkspace = useCallback((workspace: JDWorkspaceModel) => {
     setJDWorkspace(workspace);
@@ -447,6 +458,69 @@ function App() {
       });
     } finally {
       setIsImportingProfile(false);
+    }
+  };
+
+  const handleProfileSelect = async (profileID: string) => {
+    setProfileOpen(false);
+    if (profileID === profileOverview?.profileId) {
+      return;
+    }
+    setIsManagingProfile(true);
+    setProfileManagementError("");
+    setProfileFeedback(null);
+    try {
+      const overview = await ProfileService.SelectProfile(profileID);
+      applyProfileOverview(overview);
+      await Promise.all([refreshMatch(), refreshResume(), refreshPDF()]);
+      showNotice(`已切换到 ${overview.name}`);
+    } catch (error) {
+      showNotice(
+        error instanceof Error
+          ? `切换失败：${error.message}`
+          : "切换资料库失败，请重试。",
+      );
+    } finally {
+      setIsManagingProfile(false);
+    }
+  };
+
+  const openCreateProfile = () => {
+    setProfileOpen(false);
+    setNewProfileName("");
+    setNewProfileLanguage(profileOverview?.defaultLanguage || "zh-CN");
+    setProfileManagementError("");
+    setCreateProfileOpen(true);
+  };
+
+  const handleProfileCreate = async () => {
+    if (newProfileName.trim() === "") {
+      setProfileManagementError("请输入资料库名称。");
+      return;
+    }
+    setIsManagingProfile(true);
+    setProfileManagementError("");
+    try {
+      const overview = await ProfileService.CreateProfile(
+        newProfileName.trim(),
+        newProfileLanguage,
+      );
+      applyProfileOverview(overview);
+      setCreateProfileOpen(false);
+      setActiveNav("资料库");
+      await Promise.all([refreshMatch(), refreshResume(), refreshPDF()]);
+      setProfileFeedback({
+        tone: "success",
+        text: `已创建 ${overview.name}，可以开始导入 Markdown 资料。`,
+      });
+    } catch (error) {
+      setProfileManagementError(
+        error instanceof Error
+          ? `创建失败：${error.message}`
+          : "创建资料库失败，请重试。",
+      );
+    } finally {
+      setIsManagingProfile(false);
     }
   };
 
@@ -817,26 +891,46 @@ function App() {
               <IconChevronDown aria-hidden="true" size={17} stroke={1.6} />
             </button>
             {profileOpen && (
-              <div className="profile-menu">
+              <div className="profile-menu" aria-label="Profile 列表">
+                <div className="profile-menu-list">
+                  {(profileOverview?.profiles ?? []).map((profile) => (
+                    <button
+                      aria-current={profile.active ? "true" : undefined}
+                      aria-label={`选择 ${profile.name}`}
+                      className={profile.active ? "is-selected" : ""}
+                      disabled={isManagingProfile}
+                      key={profile.id}
+                      onClick={() => void handleProfileSelect(profile.id)}
+                      type="button"
+                    >
+                      {profile.active ? (
+                        <IconCheck
+                          aria-hidden="true"
+                          size={16}
+                          stroke={1.7}
+                        />
+                      ) : (
+                        <span className="menu-spacer" />
+                      )}
+                      <span>
+                        <strong>{profile.name}</strong>
+                        <small>
+                          {profile.defaultLanguage === "en"
+                            ? "English"
+                            : "简体中文"}
+                        </small>
+                      </span>
+                    </button>
+                  ))}
+                </div>
                 <button
-                  onClick={() => {
-                    setProfileOpen(false);
-                    showNotice("已选择主资料库");
-                  }}
+                  className="profile-menu-create"
+                  disabled={isManagingProfile}
+                  onClick={openCreateProfile}
                   type="button"
                 >
-                  <IconCheck aria-hidden="true" size={16} stroke={1.7} />
-                  主资料库
-                </button>
-                <button
-                  onClick={() => {
-                    setProfileOpen(false);
-                    showNotice("英文资料库将在 M2 支持");
-                  }}
-                  type="button"
-                >
-                  <span className="menu-spacer" />
-                  英文资料库
+                  <IconPlus aria-hidden="true" size={16} stroke={1.7} />
+                  <span>新建资料库</span>
                 </button>
               </div>
             )}
@@ -1306,6 +1400,92 @@ function App() {
         <div className="toast" role="status">
           <IconCheck aria-hidden="true" size={17} stroke={1.8} />
           {notice}
+        </div>
+      )}
+
+      {createProfileOpen && (
+        <div
+          aria-labelledby="create-profile-title"
+          aria-modal="true"
+          className="modal-backdrop"
+          role="dialog"
+        >
+          <section className="generate-dialog profile-create-dialog">
+            <button
+              aria-label="关闭"
+              className="icon-button modal-close"
+              disabled={isManagingProfile}
+              onClick={() => setCreateProfileOpen(false)}
+              type="button"
+            >
+              <IconX aria-hidden="true" size={20} stroke={1.6} />
+            </button>
+            <span className="dialog-kicker">PROFILE LIBRARY</span>
+            <h2 id="create-profile-title">创建独立资料库</h2>
+            <p>
+              每个 Profile 保存自己的来源文档、Evidence、匹配结果和简历版本。
+            </p>
+            <label className="profile-create-field">
+              <span>资料库名称</span>
+              <input
+                aria-label="资料库名称"
+                autoFocus
+                maxLength={80}
+                onChange={(event) => {
+                  setNewProfileName(event.target.value);
+                  setProfileManagementError("");
+                }}
+                placeholder="例如：英文岗位申请"
+                type="text"
+                value={newProfileName}
+              />
+            </label>
+            <fieldset className="generate-options profile-language-options">
+              <legend>默认语言</legend>
+              <div>
+                {[
+                  { label: "简体中文", value: "zh-CN" },
+                  { label: "English", value: "en" },
+                ].map((option) => (
+                  <button
+                    aria-pressed={newProfileLanguage === option.value}
+                    className={
+                      newProfileLanguage === option.value ? "is-selected" : ""
+                    }
+                    key={option.value}
+                    onClick={() => setNewProfileLanguage(option.value)}
+                    type="button"
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            {profileManagementError && (
+              <p className="profile-create-error" role="alert">
+                {profileManagementError}
+              </p>
+            )}
+            <div className="dialog-actions">
+              <button
+                className="button button--secondary"
+                disabled={isManagingProfile}
+                onClick={() => setCreateProfileOpen(false)}
+                type="button"
+              >
+                取消
+              </button>
+              <button
+                className="button button--primary"
+                disabled={isManagingProfile || newProfileName.trim() === ""}
+                onClick={() => void handleProfileCreate()}
+                type="button"
+              >
+                <IconPlus aria-hidden="true" size={18} stroke={1.65} />
+                {isManagingProfile ? "正在创建" : "创建并切换"}
+              </button>
+            </div>
+          </section>
         </div>
       )}
 
