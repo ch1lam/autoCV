@@ -58,6 +58,7 @@ export class EvidenceSummary {
     "confidence": number;
     "userVerified": boolean;
     "updatedAt": string;
+    "conflictEvidenceIds": string[];
     "sources": EvidenceSourceSummary[];
 
     /** Creates a new EvidenceSummary instance. */
@@ -83,6 +84,9 @@ export class EvidenceSummary {
         if (!("updatedAt" in $$source)) {
             this["updatedAt"] = "";
         }
+        if (!("conflictEvidenceIds" in $$source)) {
+            this["conflictEvidenceIds"] = [];
+        }
         if (!("sources" in $$source)) {
             this["sources"] = [];
         }
@@ -94,10 +98,14 @@ export class EvidenceSummary {
      * Creates a new EvidenceSummary instance from a string or object.
      */
     static createFrom($$source: any = {}): EvidenceSummary {
-        const $$createField7_0 = $$createType1;
+        const $$createField7_0 = $$createType0;
+        const $$createField8_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("conflictEvidenceIds" in $$parsedSource) {
+            $$parsedSource["conflictEvidenceIds"] = $$createField7_0($$parsedSource["conflictEvidenceIds"]);
+        }
         if ("sources" in $$parsedSource) {
-            $$parsedSource["sources"] = $$createField7_0($$parsedSource["sources"]);
+            $$parsedSource["sources"] = $$createField8_0($$parsedSource["sources"]);
         }
         return new EvidenceSummary($$parsedSource as Partial<EvidenceSummary>);
     }
@@ -163,6 +171,8 @@ export class ImportMarkdownResult {
     "document": SourceDocumentSummary;
     "chunkCount": number;
     "evidenceCount": number;
+    "mergedEvidenceCount": number;
+    "conflictEvidenceCount": number;
     "warnings": string[];
 
     /** Creates a new ImportMarkdownResult instance. */
@@ -182,6 +192,12 @@ export class ImportMarkdownResult {
         if (!("evidenceCount" in $$source)) {
             this["evidenceCount"] = 0;
         }
+        if (!("mergedEvidenceCount" in $$source)) {
+            this["mergedEvidenceCount"] = 0;
+        }
+        if (!("conflictEvidenceCount" in $$source)) {
+            this["conflictEvidenceCount"] = 0;
+        }
         if (!("warnings" in $$source)) {
             this["warnings"] = [];
         }
@@ -193,14 +209,14 @@ export class ImportMarkdownResult {
      * Creates a new ImportMarkdownResult instance from a string or object.
      */
     static createFrom($$source: any = {}): ImportMarkdownResult {
-        const $$createField2_0 = $$createType2;
-        const $$createField5_0 = $$createType3;
+        const $$createField2_0 = $$createType3;
+        const $$createField7_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("document" in $$parsedSource) {
             $$parsedSource["document"] = $$createField2_0($$parsedSource["document"]);
         }
         if ("warnings" in $$parsedSource) {
-            $$parsedSource["warnings"] = $$createField5_0($$parsedSource["warnings"]);
+            $$parsedSource["warnings"] = $$createField7_0($$parsedSource["warnings"]);
         }
         return new ImportMarkdownResult($$parsedSource as Partial<ImportMarkdownResult>);
     }
@@ -261,9 +277,9 @@ export class JDAnalysisSummary {
         const $$createField4_0 = $$createType5;
         const $$createField5_0 = $$createType5;
         const $$createField6_0 = $$createType5;
-        const $$createField7_0 = $$createType3;
-        const $$createField8_0 = $$createType3;
-        const $$createField9_0 = $$createType3;
+        const $$createField7_0 = $$createType0;
+        const $$createField8_0 = $$createType0;
+        const $$createField9_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("responsibilities" in $$parsedSource) {
             $$parsedSource["responsibilities"] = $$createField4_0($$parsedSource["responsibilities"]);
@@ -372,7 +388,7 @@ export class JDWorkspace {
      * Creates a new JDWorkspace instance from a string or object.
      */
     static createFrom($$source: any = {}): JDWorkspace {
-        const $$createField8_0 = $$createType3;
+        const $$createField8_0 = $$createType0;
         const $$createField9_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("warnings" in $$parsedSource) {
@@ -678,8 +694,8 @@ export class PDFWorkspace {
      * Creates a new PDFWorkspace instance from a string or object.
      */
     static createFrom($$source: any = {}): PDFWorkspace {
-        const $$createField2_0 = $$createType3;
-        const $$createField11_0 = $$createType3;
+        const $$createField2_0 = $$createType0;
+        const $$createField11_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("exportIssues" in $$parsedSource) {
             $$parsedSource["exportIssues"] = $$createField2_0($$parsedSource["exportIssues"]);
@@ -1123,8 +1139,8 @@ export class ResumeWorkspace {
      * Creates a new ResumeWorkspace instance from a string or object.
      */
     static createFrom($$source: any = {}): ResumeWorkspace {
-        const $$createField3_0 = $$createType3;
-        const $$createField13_0 = $$createType3;
+        const $$createField3_0 = $$createType0;
+        const $$createField13_0 = $$createType0;
         const $$createField14_0 = $$createType25;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("exportIssues" in $$parsedSource) {
@@ -1244,10 +1260,10 @@ export class SourceDocumentSummary {
 }
 
 // Private type creation functions
-const $$createType0 = EvidenceSourceSummary.createFrom;
-const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = SourceDocumentSummary.createFrom;
-const $$createType3 = $Create.Array($Create.Any);
+const $$createType0 = $Create.Array($Create.Any);
+const $$createType1 = EvidenceSourceSummary.createFrom;
+const $$createType2 = $Create.Array($$createType1);
+const $$createType3 = SourceDocumentSummary.createFrom;
 const $$createType4 = JDRequirementSummary.createFrom;
 const $$createType5 = $Create.Array($$createType4);
 const $$createType6 = JDAnalysisSummary.createFrom;
@@ -1261,7 +1277,7 @@ const $$createType13 = RequirementMatchSummary.createFrom;
 const $$createType14 = $Create.Array($$createType13);
 const $$createType15 = ProfileSummary.createFrom;
 const $$createType16 = $Create.Array($$createType15);
-const $$createType17 = $Create.Array($$createType2);
+const $$createType17 = $Create.Array($$createType3);
 const $$createType18 = EvidenceSummary.createFrom;
 const $$createType19 = $Create.Array($$createType18);
 const $$createType20 = ProviderDataSummary.createFrom;

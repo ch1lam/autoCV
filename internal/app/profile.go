@@ -56,14 +56,15 @@ type SourceDocumentSummary struct {
 }
 
 type EvidenceSummary struct {
-	ID           string                  `json:"id"`
-	Kind         string                  `json:"kind"`
-	Title        string                  `json:"title"`
-	Content      string                  `json:"content"`
-	Confidence   float64                 `json:"confidence"`
-	UserVerified bool                    `json:"userVerified"`
-	UpdatedAt    string                  `json:"updatedAt"`
-	Sources      []EvidenceSourceSummary `json:"sources"`
+	ID                  string                  `json:"id"`
+	Kind                string                  `json:"kind"`
+	Title               string                  `json:"title"`
+	Content             string                  `json:"content"`
+	Confidence          float64                 `json:"confidence"`
+	UserVerified        bool                    `json:"userVerified"`
+	UpdatedAt           string                  `json:"updatedAt"`
+	ConflictEvidenceIDs []string                `json:"conflictEvidenceIds"`
+	Sources             []EvidenceSourceSummary `json:"sources"`
 }
 
 type EvidenceSourceSummary struct {
@@ -94,12 +95,14 @@ type SaveEvidenceInput struct {
 }
 
 type ImportMarkdownResult struct {
-	Cancelled     bool                  `json:"cancelled"`
-	Duplicate     bool                  `json:"duplicate"`
-	Document      SourceDocumentSummary `json:"document"`
-	ChunkCount    int                   `json:"chunkCount"`
-	EvidenceCount int                   `json:"evidenceCount"`
-	Warnings      []string              `json:"warnings"`
+	Cancelled             bool                  `json:"cancelled"`
+	Duplicate             bool                  `json:"duplicate"`
+	Document              SourceDocumentSummary `json:"document"`
+	ChunkCount            int                   `json:"chunkCount"`
+	EvidenceCount         int                   `json:"evidenceCount"`
+	MergedEvidenceCount   int                   `json:"mergedEvidenceCount"`
+	ConflictEvidenceCount int                   `json:"conflictEvidenceCount"`
+	Warnings              []string              `json:"warnings"`
 }
 
 func NewProfileService(
@@ -291,7 +294,7 @@ func (service *ProfileService) getOverview(
 		DefaultLanguage: profile.DefaultLanguage,
 		Profiles:        make([]ProfileSummary, 0, len(profiles)),
 		Documents:       make([]SourceDocumentSummary, 0, len(documents)),
-		Evidence:        make([]EvidenceSummary, 0, len(evidence)),
+		Evidence:        evidenceSummaries(evidence),
 	}
 	for _, item := range profiles {
 		overview.Profiles = append(
@@ -303,12 +306,6 @@ func (service *ProfileService) getOverview(
 		overview.Documents = append(
 			overview.Documents,
 			sourceDocumentSummary(document),
-		)
-	}
-	for _, item := range evidence {
-		overview.Evidence = append(
-			overview.Evidence,
-			evidenceSummary(item),
 		)
 	}
 	return overview, nil
@@ -434,6 +431,16 @@ func (service *ProfileService) importMarkdown(
 	if err != nil {
 		return ImportMarkdownResult{}, err
 	}
+	existingEvidence, err := service.repository.ListEvidence(ctx, profile.ID)
+	if err != nil {
+		return ImportMarkdownResult{}, err
+	}
+	evidence, sources, mergedEvidenceCount, conflictEvidenceCount :=
+		reconcileImportedEvidence(
+			existingEvidence,
+			evidence,
+			sources,
+		)
 
 	managedPath, err := service.files.SaveMarkdown(
 		profile.ID,
@@ -482,11 +489,32 @@ func (service *ProfileService) importMarkdown(
 		slog.Int("chunk_count", len(chunks)),
 		slog.Int("evidence_count", len(evidence)),
 	)
+	warnings := append([]string(nil), parsed.Warnings...)
+	if mergedEvidenceCount > 0 {
+		warnings = append(
+			warnings,
+			fmt.Sprintf(
+				"已合并 %d 条重复 Evidence，并保留新增来源。",
+				mergedEvidenceCount,
+			),
+		)
+	}
+	if conflictEvidenceCount > 0 {
+		warnings = append(
+			warnings,
+			fmt.Sprintf(
+				"发现 %d 条冲突 Evidence，请在资料库中确认采用版本。",
+				conflictEvidenceCount,
+			),
+		)
+	}
 	return ImportMarkdownResult{
-		Document:      sourceDocumentSummary(document),
-		ChunkCount:    len(chunks),
-		EvidenceCount: len(evidence),
-		Warnings:      parsed.Warnings,
+		Document:              sourceDocumentSummary(document),
+		ChunkCount:            len(chunks),
+		EvidenceCount:         len(evidence),
+		MergedEvidenceCount:   mergedEvidenceCount,
+		ConflictEvidenceCount: conflictEvidenceCount,
+		Warnings:              warnings,
 	}, nil
 }
 
@@ -612,14 +640,15 @@ func profileSummary(profile domain.Profile) ProfileSummary {
 
 func evidenceSummary(item domain.Evidence) EvidenceSummary {
 	summary := EvidenceSummary{
-		ID:           item.ID,
-		Kind:         item.Kind,
-		Title:        item.Title,
-		Content:      item.Content,
-		Confidence:   item.Confidence,
-		UserVerified: item.UserVerified,
-		UpdatedAt:    item.UpdatedAt.UTC().Format(time.RFC3339),
-		Sources:      make([]EvidenceSourceSummary, 0, len(item.Sources)),
+		ID:                  item.ID,
+		Kind:                item.Kind,
+		Title:               item.Title,
+		Content:             item.Content,
+		Confidence:          item.Confidence,
+		UserVerified:        item.UserVerified,
+		UpdatedAt:           item.UpdatedAt.UTC().Format(time.RFC3339),
+		ConflictEvidenceIDs: []string{},
+		Sources:             make([]EvidenceSourceSummary, 0, len(item.Sources)),
 	}
 	for _, source := range item.Sources {
 		summary.Sources = append(summary.Sources, EvidenceSourceSummary{
@@ -633,6 +662,20 @@ func evidenceSummary(item domain.Evidence) EvidenceSummary {
 		})
 	}
 	return summary
+}
+
+func evidenceSummaries(items []domain.Evidence) []EvidenceSummary {
+	relations := analyzeEvidenceRelations(items)
+	summaries := make([]EvidenceSummary, 0, len(items))
+	for _, item := range items {
+		summary := evidenceSummary(item)
+		summary.ConflictEvidenceIDs = append(
+			summary.ConflictEvidenceIDs,
+			relations.conflictIDs[item.ID]...,
+		)
+		summaries = append(summaries, summary)
+	}
+	return summaries
 }
 
 func hashContents(contents []byte) string {

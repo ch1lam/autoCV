@@ -288,15 +288,23 @@ func (service *MatchService) prepareInput(
 	if err != nil {
 		return preparedMatchInput{}, MatchReview{}, err
 	}
-	evidence, err := service.profileRepository.ListEvidence(ctx, profile.ID)
+	storedEvidence, err := service.profileRepository.ListEvidence(ctx, profile.ID)
 	if err != nil {
 		return preparedMatchInput{}, MatchReview{}, err
 	}
-	if len(evidence) == 0 {
+	if len(storedEvidence) == 0 {
 		return preparedMatchInput{}, emptyMatchReview(
 			"blocked",
 			jd,
 			"请先导入 Markdown 职业资料，生成可追溯 Evidence。",
+		), nil
+	}
+	evidence := selectUsableEvidence(storedEvidence)
+	if len(evidence) == 0 {
+		return preparedMatchInput{}, emptyMatchReview(
+			"blocked",
+			jd,
+			"现有 Evidence 均存在未解决冲突，请先在资料库中确认采用版本。",
 		), nil
 	}
 	inputHash, err := hashMatchInput(jd, requirements, evidence)

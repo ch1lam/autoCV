@@ -12,6 +12,7 @@ import (
 	"github.com/ch1lam/autocv/internal/adapters/filesystem"
 	markdownparser "github.com/ch1lam/autocv/internal/adapters/markdown"
 	sqliteadapter "github.com/ch1lam/autocv/internal/adapters/sqlite"
+	"github.com/ch1lam/autocv/internal/domain"
 	"github.com/ch1lam/autocv/internal/ports"
 )
 
@@ -41,6 +42,26 @@ func (picker fakeMarkdownPicker) PickMarkdown() (
 
 type failingSaveRepository struct {
 	ports.ProfileRepository
+}
+
+type sequencedProfileExtractor struct {
+	contents []string
+	call     int
+}
+
+func (extractor *sequencedProfileExtractor) ExtractProfile(
+	_ context.Context,
+	request ports.ExtractProfileRequest,
+) ([]domain.ExtractedEvidence, error) {
+	content := extractor.contents[extractor.call]
+	extractor.call++
+	return []domain.ExtractedEvidence{{
+		Kind:           domain.EvidenceKindExperience,
+		Title:          "支付平台职责",
+		Content:        content,
+		SourceChunkIDs: []string{request.Chunks[0].ID},
+		Confidence:     0.8,
+	}}, nil
 }
 
 func (repository failingSaveRepository) SaveImportedDocument(
@@ -178,6 +199,101 @@ func TestProfileServiceImportsMultipleDocumentsIntoOneProfile(t *testing.T) {
 			"expected evidence from both documents, got %#v",
 			documentNames,
 		)
+	}
+}
+
+func TestProfileServiceMergesDuplicateEvidenceAcrossDocuments(t *testing.T) {
+	service, _, _, _, _ := newProfileServiceTest(t)
+	service.extractor = &sequencedProfileExtractor{
+		contents: []string{
+			"负责支付平台接口开发。",
+			"  负责支付平台接口开发。 ",
+		},
+	}
+
+	if _, err := service.ImportMarkdown(); err != nil {
+		t.Fatalf("import first Markdown: %v", err)
+	}
+	service.picker = fakeMarkdownPicker{
+		selected: ports.SelectedMarkdown{
+			OriginalName: "payment-notes.md",
+			Contents:     []byte("# 项目补充\n\n支付平台采用 Go 开发。\n"),
+		},
+		accepted: true,
+	}
+	result, err := service.ImportMarkdown()
+	if err != nil {
+		t.Fatalf("import duplicate evidence: %v", err)
+	}
+	if result.EvidenceCount != 0 ||
+		result.MergedEvidenceCount != 1 ||
+		result.ConflictEvidenceCount != 0 {
+		t.Fatalf("unexpected duplicate merge result %#v", result)
+	}
+
+	overview, err := service.GetOverview()
+	if err != nil {
+		t.Fatalf("get overview: %v", err)
+	}
+	if len(overview.Evidence) != 1 ||
+		len(overview.Evidence[0].Sources) != 2 {
+		t.Fatalf("expected one evidence with two sources, got %#v", overview.Evidence)
+	}
+}
+
+func TestProfileServiceKeepsConfirmedEvidenceWhenNewSourceConflicts(t *testing.T) {
+	service, _, _, _, _ := newProfileServiceTest(t)
+	service.extractor = &sequencedProfileExtractor{
+		contents: []string{
+			"负责支付平台接口开发。",
+			"负责支付平台架构设计。",
+		},
+	}
+
+	if _, err := service.ImportMarkdown(); err != nil {
+		t.Fatalf("import first Markdown: %v", err)
+	}
+	overview, err := service.GetOverview()
+	if err != nil {
+		t.Fatalf("get overview: %v", err)
+	}
+	confirmed, err := service.SaveEvidence(SaveEvidenceInput{
+		EvidenceID:   overview.Evidence[0].ID,
+		Title:        "支付平台职责",
+		Content:      "负责支付平台接口交付并改善稳定性。",
+		UserVerified: true,
+	})
+	if err != nil {
+		t.Fatalf("confirm evidence: %v", err)
+	}
+
+	service.picker = fakeMarkdownPicker{
+		selected: ports.SelectedMarkdown{
+			OriginalName: "architecture-notes.md",
+			Contents:     []byte("# 项目补充\n\n参与支付平台架构工作。\n"),
+		},
+		accepted: true,
+	}
+	result, err := service.ImportMarkdown()
+	if err != nil {
+		t.Fatalf("import conflicting evidence: %v", err)
+	}
+	if result.EvidenceCount != 1 ||
+		result.MergedEvidenceCount != 0 ||
+		result.ConflictEvidenceCount != 1 {
+		t.Fatalf("unexpected conflict result %#v", result)
+	}
+
+	overview, err = service.GetOverview()
+	if err != nil {
+		t.Fatalf("get conflicted overview: %v", err)
+	}
+	if len(overview.Evidence) != 2 ||
+		overview.Evidence[0].Content != confirmed.Evidence[0].Content ||
+		!overview.Evidence[0].UserVerified ||
+		len(overview.Evidence[0].ConflictEvidenceIDs) != 1 ||
+		len(overview.Evidence[1].ConflictEvidenceIDs) != 1 {
+		t.Fatalf("expected confirmed evidence to remain intact, got %#v", overview.Evidence)
 	}
 }
 
@@ -459,4 +575,5 @@ func newProfileServiceTest(t *testing.T) (
 
 var _ ports.Clock = fixedClock{}
 var _ ports.MarkdownPicker = fakeMarkdownPicker{}
+var _ ports.ProfileExtractor = (*sequencedProfileExtractor)(nil)
 var _ ports.ProfileRepository = failingSaveRepository{}
