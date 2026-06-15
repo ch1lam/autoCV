@@ -32,6 +32,7 @@ import {
     type ProfileOverview,
     type ProfileSearchResult,
     type ProviderSettings,
+    type SaveEvidenceInput,
     type ResumeBlockSummary,
     type ResumeWorkspace,
 } from "../bindings/github.com/ch1lam/autocv/internal/app";
@@ -169,6 +170,8 @@ function App() {
     useState<ProfileSearchStatus>("idle");
   const [profileSearchError, setProfileSearchError] = useState("");
   const [isImportingProfile, setIsImportingProfile] = useState(false);
+  const [isSavingProfileEvidence, setIsSavingProfileEvidence] =
+    useState(false);
   const [jdWorkspace, setJDWorkspace] =
     useState<JDWorkspaceModel | null>(null);
   const [jdStatus, setJDStatus] = useState<JDWorkspaceStatus>("loading");
@@ -546,6 +549,32 @@ function App() {
 
   const handleSelectProfileSource = (source: EvidenceSourceSummary) => {
     setSelectedProfileSourceId(source.chunkId);
+  };
+
+  const handleSaveProfileEvidence = async (input: SaveEvidenceInput) => {
+    setIsSavingProfileEvidence(true);
+    setProfileFeedback(null);
+    try {
+      const overview = await ProfileService.SaveEvidence(input);
+      applyProfileOverview(overview);
+      await Promise.all([refreshMatch(), refreshResume(), refreshPDF()]);
+      setProfileFeedback({
+        tone: "success",
+        text: "Evidence 已保存并标记为用户确认。",
+      });
+      return true;
+    } catch (error) {
+      setProfileFeedback({
+        tone: "error",
+        text:
+          error instanceof Error
+            ? `保存 Evidence 失败：${error.message}`
+            : "保存 Evidence 失败，请重试。",
+      });
+      return false;
+    } finally {
+      setIsSavingProfileEvidence(false);
+    }
   };
 
   const handleProfileSearchChange = (value: string) => {
@@ -1370,11 +1399,13 @@ function App() {
             error={profileError}
             feedback={profileFeedback}
             isImporting={isImportingProfile}
+            isSavingEvidence={isSavingProfileEvidence}
             onImport={() => requestProviderAction("profile")}
             onRefresh={() => void refreshProfile()}
             onSearch={() => void handleProfileSearch()}
             onSearchChange={handleProfileSearchChange}
             onSearchClear={handleProfileSearchClear}
+            onSaveEvidence={handleSaveProfileEvidence}
             onSelectSearchResult={handleSelectProfileSearchResult}
             onSelectEvidence={handleSelectProfileEvidence}
             onSelectSource={handleSelectProfileSource}

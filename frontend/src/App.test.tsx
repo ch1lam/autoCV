@@ -21,6 +21,7 @@ const {
   getResumeWorkspaceMock,
   getSettingsMock,
   saveJDDraftMock,
+  saveEvidenceMock,
   saveProviderMock,
   searchProfileMock,
   selectProfileMock,
@@ -43,6 +44,7 @@ const {
   importMarkdownMock: vi.fn(),
   renderPDFMock: vi.fn(),
   saveJDDraftMock: vi.fn(),
+  saveEvidenceMock: vi.fn(),
   saveProviderMock: vi.fn(),
   searchProfileMock: vi.fn(),
   selectProfileMock: vi.fn(),
@@ -73,6 +75,7 @@ vi.mock("../bindings/github.com/ch1lam/autocv/internal/app", () => ({
     CreateProfile: createProfileMock,
     GetOverview: getOverviewMock,
     ImportMarkdown: importMarkdownMock,
+    SaveEvidence: saveEvidenceMock,
     Search: searchProfileMock,
     SelectProfile: selectProfileMock,
   },
@@ -125,6 +128,8 @@ const profileOverview = {
       title: "负责支付平台核心服务开发",
       content: "负责支付平台核心服务开发，使用 Go 构建高并发交易接口。",
       confidence: 0.75,
+      userVerified: false,
+      updatedAt: "2026-06-11T01:05:00Z",
       sources: [
         {
           chunkId: "chunk-1",
@@ -527,6 +532,7 @@ describe("Paper Trail match review", () => {
       analysisStatus: "pending",
       analysis: null,
     });
+    saveEvidenceMock.mockReset().mockResolvedValue(profileOverview);
     saveProviderMock.mockReset().mockImplementation((input) =>
       Promise.resolve({
         ...providerSettings,
@@ -874,6 +880,92 @@ describe("Paper Trail match review", () => {
       screen.getByText("使用 Go 构建高并发交易接口。"),
     ).toBeInTheDocument();
     expect(screen.getAllByText("backend-profile.md").length).toBeGreaterThan(1);
+  });
+
+  it("confirms an extracted Evidence from the source inspector", async () => {
+    const user = userEvent.setup();
+    const confirmedOverview = {
+      ...profileOverview,
+      evidence: profileOverview.evidence.map((evidence) => ({
+        ...evidence,
+        userVerified: true,
+        updatedAt: "2026-06-15T01:00:00Z",
+      })),
+    };
+    saveEvidenceMock.mockResolvedValue(confirmedOverview);
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "资料库" }));
+    await user.click(
+      await screen.findByRole("button", { name: "确认此 Evidence" }),
+    );
+
+    expect(saveEvidenceMock).toHaveBeenCalledWith({
+      evidenceId: "evidence-1",
+      title: "负责支付平台核心服务开发",
+      content: "负责支付平台核心服务开发，使用 Go 构建高并发交易接口。",
+      userVerified: true,
+    });
+    expect(await screen.findByText("用户已确认")).toBeInTheDocument();
+    expect(
+      screen.getByText("Evidence 已保存并标记为用户确认。"),
+    ).toBeInTheDocument();
+  });
+
+  it("edits Evidence while preserving its source inspector", async () => {
+    const user = userEvent.setup();
+    const updatedOverview = {
+      ...profileOverview,
+      evidence: profileOverview.evidence.map((evidence) => ({
+        ...evidence,
+        title: "支付平台后端交付",
+        content: "负责支付平台核心服务交付，并使用 Go 改善接口稳定性。",
+        userVerified: true,
+        updatedAt: "2026-06-15T02:00:00Z",
+      })),
+    };
+    saveEvidenceMock.mockResolvedValue(updatedOverview);
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "资料库" }));
+    const inspector = screen.getByRole("complementary", {
+      name: "Evidence 来源检查器",
+    });
+    await user.click(within(inspector).getByRole("button", { name: "编辑" }));
+    const title = within(inspector).getByRole("textbox", {
+      name: "Evidence 标题",
+    });
+    const content = within(inspector).getByRole("textbox", {
+      name: "Evidence 内容",
+    });
+    await user.clear(title);
+    await user.type(title, "支付平台后端交付");
+    await user.clear(content);
+    await user.type(
+      content,
+      "负责支付平台核心服务交付，并使用 Go 改善接口稳定性。",
+    );
+    expect(
+      within(inspector).getAllByText("李志林 / 工作经历"),
+    ).toHaveLength(2);
+    await user.click(
+      within(inspector).getByRole("button", { name: "保存并确认" }),
+    );
+
+    expect(saveEvidenceMock).toHaveBeenCalledWith({
+      evidenceId: "evidence-1",
+      title: "支付平台后端交付",
+      content: "负责支付平台核心服务交付，并使用 Go 改善接口稳定性。",
+      userVerified: true,
+    });
+    expect(
+      await within(inspector).findByRole("heading", {
+        name: "支付平台后端交付",
+      }),
+    ).toBeInTheDocument();
+    expect(getMatchReviewMock).toHaveBeenCalledTimes(2);
+    expect(getResumeWorkspaceMock).toHaveBeenCalledTimes(2);
+    expect(getPDFWorkspaceMock).toHaveBeenCalledTimes(2);
   });
 
   it("switches the active Profile and refreshes dependent workspaces", async () => {

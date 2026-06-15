@@ -3,6 +3,7 @@ import {
   IconArchive,
   IconChevronRight,
   IconCircleCheck,
+  IconEdit,
   IconFileText,
   IconInfoCircle,
   IconLink,
@@ -11,12 +12,14 @@ import {
   IconUpload,
   IconX,
 } from "@tabler/icons-react";
+import { useEffect, useState } from "react";
 
 import type {
   EvidenceSourceSummary,
   EvidenceSummary,
   ProfileOverview,
   ProfileSearchResult,
+  SaveEvidenceInput,
 } from "../bindings/github.com/ch1lam/autocv/internal/app";
 
 export type ProfileStatus = "loading" | "ready" | "error";
@@ -30,11 +33,13 @@ type ProfileLibraryProps = {
   error: string;
   feedback: ProfileFeedback | null;
   isImporting: boolean;
+  isSavingEvidence: boolean;
   onImport: () => void;
   onRefresh: () => void;
   onSearch: () => void;
   onSearchChange: (value: string) => void;
   onSearchClear: () => void;
+  onSaveEvidence: (input: SaveEvidenceInput) => Promise<boolean>;
   onSelectSearchResult: (result: ProfileSearchResult) => void;
   onSelectEvidence: (evidence: EvidenceSummary) => void;
   onSelectSource: (source: EvidenceSourceSummary) => void;
@@ -89,11 +94,13 @@ function ProfileLibrary({
   error,
   feedback,
   isImporting,
+  isSavingEvidence,
   onImport,
   onRefresh,
   onSearch,
   onSearchChange,
   onSearchClear,
+  onSaveEvidence,
   onSelectSearchResult,
   onSelectEvidence,
   onSelectSource,
@@ -107,6 +114,9 @@ function ProfileLibrary({
   selectedSourceId,
   status,
 }: ProfileLibraryProps) {
+  const [editingEvidenceID, setEditingEvidenceID] = useState("");
+  const [draftEvidenceTitle, setDraftEvidenceTitle] = useState("");
+  const [draftEvidenceContent, setDraftEvidenceContent] = useState("");
   const selectedEvidence =
     overview?.evidence.find((item) => item.id === selectedEvidenceId) ??
     overview?.evidence[0];
@@ -119,6 +129,55 @@ function ProfileLibrary({
   const locator = selectedSource
     ? parseLocator(selectedSource.locatorJson)
     : {};
+  const isEditingEvidence = editingEvidenceID === selectedEvidence?.id;
+
+  useEffect(() => {
+    setEditingEvidenceID("");
+    setDraftEvidenceTitle(selectedEvidence?.title ?? "");
+    setDraftEvidenceContent(selectedEvidence?.content ?? "");
+  }, [selectedEvidence?.id]);
+
+  const beginEvidenceEdit = () => {
+    if (!selectedEvidence) {
+      return;
+    }
+    setDraftEvidenceTitle(selectedEvidence.title);
+    setDraftEvidenceContent(selectedEvidence.content);
+    setEditingEvidenceID(selectedEvidence.id);
+  };
+
+  const cancelEvidenceEdit = () => {
+    setEditingEvidenceID("");
+    setDraftEvidenceTitle(selectedEvidence?.title ?? "");
+    setDraftEvidenceContent(selectedEvidence?.content ?? "");
+  };
+
+  const saveEvidence = async () => {
+    if (!selectedEvidence) {
+      return;
+    }
+    const saved = await onSaveEvidence({
+      evidenceId: selectedEvidence.id,
+      title: draftEvidenceTitle,
+      content: draftEvidenceContent,
+      userVerified: true,
+    });
+    if (saved) {
+      setEditingEvidenceID("");
+    }
+  };
+
+  const confirmEvidence = async () => {
+    if (!selectedEvidence) {
+      return;
+    }
+    await onSaveEvidence({
+      evidenceId: selectedEvidence.id,
+      title: selectedEvidence.title,
+      content: selectedEvidence.content,
+      userVerified: true,
+    });
+  };
 
   return (
     <div className="profile-workspace-layout">
@@ -418,7 +477,19 @@ function ProfileLibrary({
                       type="button"
                     >
                       <span className="profile-evidence-title">
-                        <strong>{evidence.title}</strong>
+                        <span className="profile-evidence-title-line">
+                          <strong>{evidence.title}</strong>
+                          {evidence.userVerified && (
+                            <span>
+                              <IconCircleCheck
+                                aria-hidden="true"
+                                size={12}
+                                stroke={1.9}
+                              />
+                              已确认
+                            </span>
+                          )}
+                        </span>
                         <small>{evidence.content}</small>
                       </span>
                       <span className="evidence-kind">
@@ -445,7 +516,24 @@ function ProfileLibrary({
         className="evidence-panel profile-source-panel"
       >
         <header className="evidence-header">
-          <h2>Evidence 来源</h2>
+          <h2>{isEditingEvidence ? "编辑 Evidence" : "Evidence 来源"}</h2>
+          {selectedEvidence && (
+            <button
+              className="profile-inspector-action"
+              disabled={isSavingEvidence}
+              onClick={
+                isEditingEvidence ? cancelEvidenceEdit : beginEvidenceEdit
+              }
+              type="button"
+            >
+              {isEditingEvidence ? (
+                <IconX aria-hidden="true" size={16} stroke={1.6} />
+              ) : (
+                <IconEdit aria-hidden="true" size={16} stroke={1.6} />
+              )}
+              {isEditingEvidence ? "取消" : "编辑"}
+            </button>
+          )}
         </header>
 
         {!selectedEvidence ? (
@@ -457,22 +545,160 @@ function ProfileLibrary({
         ) : (
           <>
             <section className="profile-evidence-summary">
-              <span>
-                {evidenceKindLabels[selectedEvidence.kind] ??
-                  selectedEvidence.kind}
-              </span>
-              <h3>{selectedEvidence.title}</h3>
-              <p>{selectedEvidence.content}</p>
-              <dl>
-                <div>
-                  <dt>置信度</dt>
-                  <dd>{Math.round(selectedEvidence.confidence * 100)}%</dd>
-                </div>
-                <div>
-                  <dt>来源数量</dt>
-                  <dd>{selectedEvidence.sources.length}</dd>
-                </div>
-              </dl>
+              {isEditingEvidence ? (
+                <form
+                  className="profile-evidence-editor"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void saveEvidence();
+                  }}
+                >
+                  <label>
+                    <span>Evidence 标题</span>
+                    <input
+                      aria-label="Evidence 标题"
+                      maxLength={240}
+                      onChange={(event) =>
+                        setDraftEvidenceTitle(event.target.value)
+                      }
+                      type="text"
+                      value={draftEvidenceTitle}
+                    />
+                  </label>
+                  <label>
+                    <span>事实内容</span>
+                    <textarea
+                      aria-label="Evidence 内容"
+                      maxLength={8000}
+                      onChange={(event) =>
+                        setDraftEvidenceContent(event.target.value)
+                      }
+                      rows={7}
+                      value={draftEvidenceContent}
+                    />
+                  </label>
+                  <p>
+                    保存代表你确认这条信息准确。来源引用会继续保留，后续提取不能静默覆盖。
+                  </p>
+                  <div className="profile-evidence-editor-actions">
+                    <button
+                      className="button button--secondary"
+                      disabled={isSavingEvidence}
+                      onClick={cancelEvidenceEdit}
+                      type="button"
+                    >
+                      取消
+                    </button>
+                    <button
+                      className="button button--primary"
+                      disabled={
+                        isSavingEvidence ||
+                        draftEvidenceTitle.trim() === "" ||
+                        draftEvidenceContent.trim() === ""
+                      }
+                      type="submit"
+                    >
+                      {isSavingEvidence ? (
+                        <IconRefresh
+                          aria-hidden="true"
+                          className="is-spinning"
+                          size={16}
+                          stroke={1.6}
+                        />
+                      ) : (
+                        <IconCircleCheck
+                          aria-hidden="true"
+                          size={16}
+                          stroke={1.7}
+                        />
+                      )}
+                      {isSavingEvidence ? "保存中" : "保存并确认"}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <div className="profile-evidence-meta">
+                    <span>
+                      {evidenceKindLabels[selectedEvidence.kind] ??
+                        selectedEvidence.kind}
+                    </span>
+                    <span
+                      className={
+                        selectedEvidence.userVerified
+                          ? "is-verified"
+                          : "is-unverified"
+                      }
+                    >
+                      {selectedEvidence.userVerified ? (
+                        <IconCircleCheck
+                          aria-hidden="true"
+                          size={13}
+                          stroke={1.9}
+                        />
+                      ) : (
+                        <IconInfoCircle
+                          aria-hidden="true"
+                          size={13}
+                          stroke={1.8}
+                        />
+                      )}
+                      {selectedEvidence.userVerified
+                        ? "用户已确认"
+                        : "AI 提取，待确认"}
+                    </span>
+                  </div>
+                  <h3>{selectedEvidence.title}</h3>
+                  <p>{selectedEvidence.content}</p>
+                  <dl>
+                    <div>
+                      <dt>置信度</dt>
+                      <dd>
+                        {Math.round(selectedEvidence.confidence * 100)}%
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>来源数量</dt>
+                      <dd>{selectedEvidence.sources.length}</dd>
+                    </div>
+                    {selectedEvidence.updatedAt && (
+                      <div>
+                        <dt>最后更新</dt>
+                        <dd>{formatImportedAt(selectedEvidence.updatedAt)}</dd>
+                      </div>
+                    )}
+                  </dl>
+                  {!selectedEvidence.userVerified && (
+                    <div className="profile-evidence-confirmation">
+                      <span>
+                        确认后，这条 Evidence 可作为用户认可的事实继续参与生成。
+                      </span>
+                      <button
+                        className="button button--secondary"
+                        disabled={isSavingEvidence}
+                        onClick={() => void confirmEvidence()}
+                        type="button"
+                      >
+                        {isSavingEvidence ? (
+                          <IconRefresh
+                            aria-hidden="true"
+                            className="is-spinning"
+                            size={16}
+                            stroke={1.6}
+                          />
+                        ) : (
+                          <IconCircleCheck
+                            aria-hidden="true"
+                            size={16}
+                            stroke={1.8}
+                          />
+                        )}
+                        {isSavingEvidence ? "确认中" : "确认此 Evidence"}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
             </section>
 
             <section className="sources profile-sources">

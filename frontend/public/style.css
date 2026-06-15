@@ -1705,6 +1705,32 @@ button:focus-visible {
   padding-right: 12px;
 }
 
+.profile-evidence-title-line {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.profile-evidence-title-line > strong {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.profile-evidence-title-line > span {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #4b714f;
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.profile-evidence-title-line > span svg {
+  color: #4b714f;
+}
+
 .profile-evidence-title strong,
 .profile-evidence-title small {
   overflow: hidden;
@@ -1738,6 +1764,31 @@ button:focus-visible {
   animation: inspector-enter 230ms ease-out both;
 }
 
+.profile-inspector-action {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.profile-inspector-action:hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--paper-strong);
+  color: var(--text);
+}
+
+.profile-inspector-action:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 .profile-inspector-empty {
   min-height: 320px;
   display: grid;
@@ -1764,11 +1815,34 @@ button:focus-visible {
   border-bottom: 1px solid var(--line);
 }
 
-.profile-evidence-summary > span {
+.profile-evidence-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.profile-evidence-meta > span:first-child {
   color: var(--blue);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.08em;
+}
+
+.profile-evidence-meta > span:last-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.profile-evidence-meta > span.is-verified {
+  color: #4b714f;
+}
+
+.profile-evidence-meta > span.is-unverified {
+  color: #8a672b;
 }
 
 .profile-evidence-summary h3 {
@@ -1785,17 +1859,17 @@ button:focus-visible {
 }
 
 .profile-evidence-summary dl {
-  display: flex;
-  gap: 38px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, auto));
+  gap: 12px 28px;
   margin: 18px 0 0;
   padding-top: 17px;
   border-top: 1px solid var(--line);
 }
 
 .profile-evidence-summary dl div {
-  display: flex;
-  align-items: baseline;
-  gap: 9px;
+  display: grid;
+  gap: 5px;
 }
 
 .profile-evidence-summary dt {
@@ -1807,6 +1881,87 @@ button:focus-visible {
   margin: 0;
   font-size: 12px;
   font-weight: 650;
+}
+
+.profile-evidence-confirmation {
+  display: grid;
+  gap: 11px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.profile-evidence-confirmation > span {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.profile-evidence-confirmation .button {
+  justify-self: start;
+}
+
+.profile-evidence-editor {
+  display: grid;
+  gap: 16px;
+}
+
+.profile-evidence-editor label {
+  display: grid;
+  gap: 7px;
+}
+
+.profile-evidence-editor label > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.profile-evidence-editor input,
+.profile-evidence-editor textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  outline: 0;
+  background: var(--paper-strong);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.profile-evidence-editor input {
+  min-height: 38px;
+  padding: 0 10px;
+}
+
+.profile-evidence-editor textarea {
+  min-height: 132px;
+  padding: 9px 10px;
+  resize: vertical;
+}
+
+.profile-evidence-editor input:focus,
+.profile-evidence-editor textarea:focus {
+  border-color: #9db5e1;
+  box-shadow: 0 0 0 3px rgba(37, 84, 163, 0.08);
+}
+
+.profile-evidence-editor > p {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.profile-evidence-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 2px;
 }
 
 .profile-sources {
