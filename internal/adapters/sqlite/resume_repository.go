@@ -26,6 +26,130 @@ func NewResumeRepository(db *sql.DB) *ResumeRepository {
 	return &ResumeRepository{db: db}
 }
 
+func (repository *ResumeRepository) GetScope(
+	ctx context.Context,
+	profileID string,
+	jdID string,
+) (domain.ResumeRunScope, bool, error) {
+	var scope domain.ResumeRunScope
+	var updatedAt string
+	err := repository.db.QueryRowContext(
+		ctx,
+		`SELECT profile_id, jd_id, mode, updated_at
+		   FROM run_scopes
+		  WHERE profile_id = ? AND jd_id = ?`,
+		profileID,
+		jdID,
+	).Scan(
+		&scope.ProfileID,
+		&scope.JDID,
+		&scope.Mode,
+		&updatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.ResumeRunScope{}, false, nil
+	}
+	if err != nil {
+		return domain.ResumeRunScope{}, false, fmt.Errorf(
+			"get run scope: %w",
+			err,
+		)
+	}
+	scope.UpdatedAt, err = parseTime(updatedAt)
+	if err != nil {
+		return domain.ResumeRunScope{}, false, err
+	}
+
+	rows, err := repository.db.QueryContext(
+		ctx,
+		`SELECT document_id
+		   FROM run_scope_documents
+		  WHERE profile_id = ? AND jd_id = ?
+		  ORDER BY ordinal`,
+		profileID,
+		jdID,
+	)
+	if err != nil {
+		return domain.ResumeRunScope{}, false, fmt.Errorf(
+			"list run scope documents: %w",
+			err,
+		)
+	}
+	defer rows.Close()
+	scope.DocumentIDs = make([]string, 0)
+	for rows.Next() {
+		var documentID string
+		if err := rows.Scan(&documentID); err != nil {
+			return domain.ResumeRunScope{}, false, fmt.Errorf(
+				"scan run scope document: %w",
+				err,
+			)
+		}
+		scope.DocumentIDs = append(scope.DocumentIDs, documentID)
+	}
+	if err := rows.Err(); err != nil {
+		return domain.ResumeRunScope{}, false, fmt.Errorf(
+			"iterate run scope documents: %w",
+			err,
+		)
+	}
+	return scope, true, nil
+}
+
+func (repository *ResumeRepository) SaveScope(
+	ctx context.Context,
+	scope domain.ResumeRunScope,
+) error {
+	tx, err := repository.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin run scope transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO run_scopes(profile_id, jd_id, mode, updated_at)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT(profile_id, jd_id) DO UPDATE SET
+			mode = excluded.mode,
+			updated_at = excluded.updated_at`,
+		scope.ProfileID,
+		scope.JDID,
+		scope.Mode,
+		formatTime(scope.UpdatedAt),
+	); err != nil {
+		return fmt.Errorf("save run scope: %w", err)
+	}
+	if _, err := tx.ExecContext(
+		ctx,
+		`DELETE FROM run_scope_documents
+		  WHERE profile_id = ? AND jd_id = ?`,
+		scope.ProfileID,
+		scope.JDID,
+	); err != nil {
+		return fmt.Errorf("clear run scope documents: %w", err)
+	}
+	for ordinal, documentID := range scope.DocumentIDs {
+		if _, err := tx.ExecContext(
+			ctx,
+			`INSERT INTO run_scope_documents(
+				profile_id, jd_id, document_id, ordinal
+			) VALUES (?, ?, ?, ?)`,
+			scope.ProfileID,
+			scope.JDID,
+			documentID,
+			ordinal,
+		); err != nil {
+			return fmt.Errorf("insert run scope document: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit run scope: %w", err)
+	}
+	return nil
+}
+
 func (repository *ResumeRepository) GetLatest(
 	ctx context.Context,
 	profileID string,

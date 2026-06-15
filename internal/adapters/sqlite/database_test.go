@@ -12,13 +12,13 @@ func TestOpenAppliesMigrationOnce(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "autocv.db")
 
 	db := openTestDatabase(t, ctx, path)
-	assertMigrationCount(t, db, 10)
+	assertMigrationCount(t, db, 11)
 	assertMinimumTables(t, db)
 	db.Close()
 
 	db = openTestDatabase(t, ctx, path)
 	defer db.Close()
-	assertMigrationCount(t, db, 10)
+	assertMigrationCount(t, db, 11)
 	assertMinimumTables(t, db)
 }
 
@@ -70,6 +70,8 @@ func assertMinimumTables(t *testing.T, db *sql.DB) {
 		"provider_calls",
 		"provider_configs",
 		"profile_search",
+		"run_scope_documents",
+		"run_scopes",
 		"resume_blocks",
 		"resume_runs",
 		"resumes",

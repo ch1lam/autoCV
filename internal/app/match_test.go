@@ -74,6 +74,7 @@ func TestMatchServiceAnalyzesScoresAndRestoresReview(t *testing.T) {
 
 	restarted := NewMatchService(
 		fixture.matchRepository,
+		fixture.scopeRepository,
 		fixture.profileRepository,
 		fixture.jdRepository,
 		fakeprovider.New(),
@@ -184,6 +185,126 @@ func TestMatchServiceUsesActiveProfile(t *testing.T) {
 	}
 }
 
+func TestMatchServiceAppliesSelectedRunDocuments(t *testing.T) {
+	fixture := newMatchServiceFixture(t, fakeprovider.New())
+	fixture.importProfile(t)
+
+	secondContents, err := os.ReadFile(filepath.Join(
+		"..",
+		"..",
+		"testdata",
+		"synthetic",
+		"profile",
+		"backend-profile-en.md",
+	))
+	if err != nil {
+		t.Fatalf("read second profile fixture: %v", err)
+	}
+	fixture.profileService.picker = fakeMarkdownPicker{
+		selected: ports.SelectedMarkdown{
+			OriginalName: "backend-profile-en.md",
+			Contents:     secondContents,
+		},
+		accepted: true,
+	}
+	if _, err := fixture.profileService.ImportMarkdown(); err != nil {
+		t.Fatalf("import second profile document: %v", err)
+	}
+	fixture.analyzeJD(t, fixture.jdText)
+
+	overview, err := fixture.profileService.GetOverview()
+	if err != nil {
+		t.Fatalf("get profile overview: %v", err)
+	}
+	if len(overview.Documents) != 2 {
+		t.Fatalf("expected two profile documents, got %#v", overview.Documents)
+	}
+	var selectedID string
+	var otherID string
+	for _, document := range overview.Documents {
+		if document.OriginalName == "backend-profile-en.md" {
+			selectedID = document.ID
+		} else {
+			otherID = document.ID
+		}
+	}
+	if selectedID == "" || otherID == "" {
+		t.Fatalf("expected both imported documents, got %#v", overview.Documents)
+	}
+	pending, err := fixture.service.SaveScope(
+		string(domain.RunScopeSelected),
+		[]string{selectedID},
+	)
+	if err != nil {
+		t.Fatalf("save selected run scope: %v", err)
+	}
+	if pending.Status != "pending" ||
+		pending.Scope.SelectedCount != 1 ||
+		pending.Scope.SelectedDocumentIDs[0] != selectedID {
+		t.Fatalf("unexpected pending scoped review %#v", pending)
+	}
+
+	review, err := fixture.service.Analyze()
+	if err != nil {
+		t.Fatalf("analyze scoped match: %v", err)
+	}
+	if review.Status != "ready" || review.Scope.SelectedCount != 1 {
+		t.Fatalf("unexpected scoped review %#v", review)
+	}
+	var evidenceCount int
+	for _, requirement := range review.Requirements {
+		for _, evidence := range requirement.Evidence {
+			evidenceCount++
+			for _, source := range evidence.Sources {
+				if source.DocumentID != selectedID {
+					t.Fatalf(
+						"expected only selected document sources, got %#v",
+						source,
+					)
+				}
+			}
+		}
+	}
+	if evidenceCount == 0 {
+		t.Fatal("expected scoped match to retain relevant evidence")
+	}
+	resumeService := NewResumeService(
+		fixture.scopeRepository,
+		fixture.matchRepository,
+		fixture.profileRepository,
+		fixture.jdRepository,
+		fakeprovider.New(),
+		fixedClock{now: profileTestTime.Add(2 * time.Hour)},
+	)
+	resume, err := resumeService.Generate("en", 0.5)
+	if err != nil {
+		t.Fatalf("generate scoped resume: %v", err)
+	}
+	for _, block := range resume.Blocks {
+		for _, evidence := range block.Evidence {
+			for _, source := range evidence.Sources {
+				if source.DocumentID != selectedID {
+					t.Fatalf(
+						"expected scoped resume sources, got %#v",
+						source,
+					)
+				}
+			}
+		}
+	}
+
+	stale, err := fixture.service.SaveScope(
+		string(domain.RunScopeSelected),
+		[]string{otherID},
+	)
+	if err != nil {
+		t.Fatalf("replace selected run scope: %v", err)
+	}
+	if stale.Status != "stale" {
+		t.Fatalf("expected scope change to invalidate match, got %#v", stale)
+	}
+}
+
 type matchServiceFixture struct {
 	db                *sql.DB
 	files             *filesystem.ManagedFiles
@@ -191,6 +312,7 @@ type matchServiceFixture struct {
 	profileRepository *sqliteadapter.ProfileRepository
 	jdRepository      *sqliteadapter.JDRepository
 	matchRepository   *sqliteadapter.MatchRepository
+	scopeRepository   *sqliteadapter.ResumeRepository
 	profileService    *ProfileService
 	jdService         *JDService
 	jdText            string
@@ -256,6 +378,7 @@ func newMatchServiceFixtureFromFiles(
 	profileRepository := sqliteadapter.NewProfileRepository(db)
 	jdRepository := sqliteadapter.NewJDRepository(db)
 	matchRepository := sqliteadapter.NewMatchRepository(db)
+	scopeRepository := sqliteadapter.NewResumeRepository(db)
 	provider := fakeprovider.New()
 	profileService := NewProfileService(
 		profileRepository,
@@ -282,6 +405,7 @@ func newMatchServiceFixtureFromFiles(
 		files: files,
 		service: NewMatchService(
 			matchRepository,
+			scopeRepository,
 			profileRepository,
 			jdRepository,
 			suggester,
@@ -290,6 +414,7 @@ func newMatchServiceFixtureFromFiles(
 		profileRepository: profileRepository,
 		jdRepository:      jdRepository,
 		matchRepository:   matchRepository,
+		scopeRepository:   scopeRepository,
 		profileService:    profileService,
 		jdService:         jdService,
 		jdText:            string(jdContents),

@@ -21,5 +21,11 @@ export function GetReview(): $CancellablePromise<$models.MatchReview> {
     });
 }
 
+export function SaveScope(mode: string, documentIDs: string[]): $CancellablePromise<$models.MatchReview> {
+    return $Call.ByID(1256379586, mode, documentIDs).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
 // Private type creation functions
 const $$createType0 = $models.MatchReview.createFrom;

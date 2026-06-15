@@ -56,6 +56,21 @@ type ResumeRun struct {
 	UpdatedAt      time.Time
 }
 
+type RunScopeMode string
+
+const (
+	RunScopeAll      RunScopeMode = "all"
+	RunScopeSelected RunScopeMode = "selected"
+)
+
+type ResumeRunScope struct {
+	ProfileID   string
+	JDID        string
+	Mode        RunScopeMode
+	DocumentIDs []string
+	UpdatedAt   time.Time
+}
+
 type ResumeBlockDraft struct {
 	Kind              ResumeBlockKind `json:"kind"`
 	Content           string          `json:"content"`

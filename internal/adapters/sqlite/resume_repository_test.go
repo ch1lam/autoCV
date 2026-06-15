@@ -66,6 +66,65 @@ func TestResumeRepositoryAppendsVersionsAndLoadsBlockSources(t *testing.T) {
 	}
 }
 
+func TestResumeRepositoryReplacesRunScopeDocuments(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDatabase(t, ctx, filepath.Join(t.TempDir(), "scope.db"))
+	defer db.Close()
+	now := time.Date(2026, 6, 16, 2, 0, 0, 0, time.UTC)
+	seedResumeDependencies(t, db, now)
+	for _, documentID := range []string{"document-1", "document-2"} {
+		if _, err := db.Exec(
+			`INSERT INTO source_documents(
+				id, profile_id, kind, original_name, managed_path,
+				content_hash, parse_status, created_at, updated_at
+			) VALUES (?, 'profile-1', 'markdown', ?, ?, ?, 'succeeded', ?, ?)`,
+			documentID,
+			documentID+".md",
+			"/managed/"+documentID+".md",
+			"hash-"+documentID,
+			formatTime(now),
+			formatTime(now),
+		); err != nil {
+			t.Fatalf("seed source document: %v", err)
+		}
+	}
+	repository := NewResumeRepository(db)
+	selected := domain.ResumeRunScope{
+		ProfileID:   "profile-1",
+		JDID:        "jd-1",
+		Mode:        domain.RunScopeSelected,
+		DocumentIDs: []string{"document-2"},
+		UpdatedAt:   now,
+	}
+	if err := repository.SaveScope(ctx, selected); err != nil {
+		t.Fatalf("save selected run scope: %v", err)
+	}
+	saved, found, err := repository.GetScope(ctx, "profile-1", "jd-1")
+	if err != nil {
+		t.Fatalf("get selected run scope: %v", err)
+	}
+	if !found || saved.Mode != domain.RunScopeSelected ||
+		len(saved.DocumentIDs) != 1 || saved.DocumentIDs[0] != "document-2" {
+		t.Fatalf("unexpected selected run scope %#v", saved)
+	}
+
+	all := selected
+	all.Mode = domain.RunScopeAll
+	all.DocumentIDs = nil
+	all.UpdatedAt = now.Add(time.Minute)
+	if err := repository.SaveScope(ctx, all); err != nil {
+		t.Fatalf("save all-documents run scope: %v", err)
+	}
+	saved, found, err = repository.GetScope(ctx, "profile-1", "jd-1")
+	if err != nil {
+		t.Fatalf("get all-documents run scope: %v", err)
+	}
+	if !found || saved.Mode != domain.RunScopeAll ||
+		len(saved.DocumentIDs) != 0 {
+		t.Fatalf("unexpected all-documents run scope %#v", saved)
+	}
+}
+
 func seedResumeDependencies(
 	t *testing.T,
 	db *sql.DB,

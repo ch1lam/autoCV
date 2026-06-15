@@ -569,6 +569,7 @@ export class MatchReview {
     "counts": MatchCounts;
     "dimensions": MatchDimensionSummary[];
     "requirements": RequirementMatchSummary[];
+    "scope": RunScopeSummary;
 
     /** Creates a new MatchReview instance. */
     constructor($$source: Partial<MatchReview> = {}) {
@@ -605,6 +606,9 @@ export class MatchReview {
         if (!("requirements" in $$source)) {
             this["requirements"] = [];
         }
+        if (!("scope" in $$source)) {
+            this["scope"] = (new RunScopeSummary());
+        }
 
         Object.assign(this, $$source);
     }
@@ -616,6 +620,7 @@ export class MatchReview {
         const $$createField8_0 = $$createType10;
         const $$createField9_0 = $$createType12;
         const $$createField10_0 = $$createType14;
+        const $$createField11_0 = $$createType15;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("counts" in $$parsedSource) {
             $$parsedSource["counts"] = $$createField8_0($$parsedSource["counts"]);
@@ -625,6 +630,9 @@ export class MatchReview {
         }
         if ("requirements" in $$parsedSource) {
             $$parsedSource["requirements"] = $$createField10_0($$parsedSource["requirements"]);
+        }
+        if ("scope" in $$parsedSource) {
+            $$parsedSource["scope"] = $$createField11_0($$parsedSource["scope"]);
         }
         return new MatchReview($$parsedSource as Partial<MatchReview>);
     }
@@ -743,9 +751,9 @@ export class ProfileOverview {
      * Creates a new ProfileOverview instance from a string or object.
      */
     static createFrom($$source: any = {}): ProfileOverview {
-        const $$createField3_0 = $$createType16;
-        const $$createField4_0 = $$createType17;
-        const $$createField5_0 = $$createType19;
+        const $$createField3_0 = $$createType17;
+        const $$createField4_0 = $$createType18;
+        const $$createField5_0 = $$createType20;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("profiles" in $$parsedSource) {
             $$parsedSource["profiles"] = $$createField3_0($$parsedSource["profiles"]);
@@ -940,8 +948,8 @@ export class ProviderSettings {
      * Creates a new ProviderSettings instance from a string or object.
      */
     static createFrom($$source: any = {}): ProviderSettings {
-        const $$createField5_0 = $$createType21;
-        const $$createField6_0 = $$createType21;
+        const $$createField5_0 = $$createType22;
+        const $$createField6_0 = $$createType22;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("sentContentTypes" in $$parsedSource) {
             $$parsedSource["sentContentTypes"] = $$createField5_0($$parsedSource["sentContentTypes"]);
@@ -1005,7 +1013,7 @@ export class RequirementMatchSummary {
      * Creates a new RequirementMatchSummary instance from a string or object.
      */
     static createFrom($$source: any = {}): RequirementMatchSummary {
-        const $$createField9_0 = $$createType23;
+        const $$createField9_0 = $$createType24;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("evidence" in $$parsedSource) {
             $$parsedSource["evidence"] = $$createField9_0($$parsedSource["evidence"]);
@@ -1058,7 +1066,7 @@ export class ResumeBlockSummary {
      * Creates a new ResumeBlockSummary instance from a string or object.
      */
     static createFrom($$source: any = {}): ResumeBlockSummary {
-        const $$createField7_0 = $$createType23;
+        const $$createField7_0 = $$createType24;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("evidence" in $$parsedSource) {
             $$parsedSource["evidence"] = $$createField7_0($$parsedSource["evidence"]);
@@ -1141,7 +1149,7 @@ export class ResumeWorkspace {
     static createFrom($$source: any = {}): ResumeWorkspace {
         const $$createField3_0 = $$createType0;
         const $$createField13_0 = $$createType0;
-        const $$createField14_0 = $$createType25;
+        const $$createField14_0 = $$createType26;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("exportIssues" in $$parsedSource) {
             $$parsedSource["exportIssues"] = $$createField3_0($$parsedSource["exportIssues"]);
@@ -1153,6 +1161,84 @@ export class ResumeWorkspace {
             $$parsedSource["blocks"] = $$createField14_0($$parsedSource["blocks"]);
         }
         return new ResumeWorkspace($$parsedSource as Partial<ResumeWorkspace>);
+    }
+}
+
+export class RunScopeDocumentSummary {
+    "id": string;
+    "originalName": string;
+    "kind": string;
+    "selected": boolean;
+
+    /** Creates a new RunScopeDocumentSummary instance. */
+    constructor($$source: Partial<RunScopeDocumentSummary> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("originalName" in $$source)) {
+            this["originalName"] = "";
+        }
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+        if (!("selected" in $$source)) {
+            this["selected"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RunScopeDocumentSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): RunScopeDocumentSummary {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new RunScopeDocumentSummary($$parsedSource as Partial<RunScopeDocumentSummary>);
+    }
+}
+
+export class RunScopeSummary {
+    "mode": string;
+    "selectedCount": number;
+    "availableCount": number;
+    "selectedDocumentIds": string[];
+    "documents": RunScopeDocumentSummary[];
+
+    /** Creates a new RunScopeSummary instance. */
+    constructor($$source: Partial<RunScopeSummary> = {}) {
+        if (!("mode" in $$source)) {
+            this["mode"] = "";
+        }
+        if (!("selectedCount" in $$source)) {
+            this["selectedCount"] = 0;
+        }
+        if (!("availableCount" in $$source)) {
+            this["availableCount"] = 0;
+        }
+        if (!("selectedDocumentIds" in $$source)) {
+            this["selectedDocumentIds"] = [];
+        }
+        if (!("documents" in $$source)) {
+            this["documents"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RunScopeSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): RunScopeSummary {
+        const $$createField3_0 = $$createType0;
+        const $$createField4_0 = $$createType28;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("selectedDocumentIds" in $$parsedSource) {
+            $$parsedSource["selectedDocumentIds"] = $$createField3_0($$parsedSource["selectedDocumentIds"]);
+        }
+        if ("documents" in $$parsedSource) {
+            $$parsedSource["documents"] = $$createField4_0($$parsedSource["documents"]);
+        }
+        return new RunScopeSummary($$parsedSource as Partial<RunScopeSummary>);
     }
 }
 
@@ -1275,14 +1361,17 @@ const $$createType11 = MatchDimensionSummary.createFrom;
 const $$createType12 = $Create.Array($$createType11);
 const $$createType13 = RequirementMatchSummary.createFrom;
 const $$createType14 = $Create.Array($$createType13);
-const $$createType15 = ProfileSummary.createFrom;
-const $$createType16 = $Create.Array($$createType15);
-const $$createType17 = $Create.Array($$createType3);
-const $$createType18 = EvidenceSummary.createFrom;
-const $$createType19 = $Create.Array($$createType18);
-const $$createType20 = ProviderDataSummary.createFrom;
-const $$createType21 = $Create.Array($$createType20);
-const $$createType22 = MatchEvidenceSummary.createFrom;
-const $$createType23 = $Create.Array($$createType22);
-const $$createType24 = ResumeBlockSummary.createFrom;
-const $$createType25 = $Create.Array($$createType24);
+const $$createType15 = RunScopeSummary.createFrom;
+const $$createType16 = ProfileSummary.createFrom;
+const $$createType17 = $Create.Array($$createType16);
+const $$createType18 = $Create.Array($$createType3);
+const $$createType19 = EvidenceSummary.createFrom;
+const $$createType20 = $Create.Array($$createType19);
+const $$createType21 = ProviderDataSummary.createFrom;
+const $$createType22 = $Create.Array($$createType21);
+const $$createType23 = MatchEvidenceSummary.createFrom;
+const $$createType24 = $Create.Array($$createType23);
+const $$createType25 = ResumeBlockSummary.createFrom;
+const $$createType26 = $Create.Array($$createType25);
+const $$createType27 = RunScopeDocumentSummary.createFrom;
+const $$createType28 = $Create.Array($$createType27);

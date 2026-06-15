@@ -427,6 +427,17 @@ func (service *ResumeService) prepareInput(
 	if err != nil {
 		return preparedResumeInput{}, ResumeWorkspace{}, err
 	}
+	scope, _, err := resolveRunScope(
+		ctx,
+		service.resumeRepository,
+		service.profileRepository,
+		profile.ID,
+		jd.ID,
+		service.clock.Now(),
+	)
+	if err != nil {
+		return preparedResumeInput{}, ResumeWorkspace{}, err
+	}
 	evidence, err := service.profileRepository.ListEvidence(ctx, profile.ID)
 	if err != nil {
 		return preparedResumeInput{}, ResumeWorkspace{}, err
@@ -435,6 +446,15 @@ func (service *ResumeService) prepareInput(
 		return preparedResumeInput{}, ResumeWorkspace{
 			Status:       "blocked",
 			Message:      "请先导入 Markdown 职业资料。",
+			ExportIssues: make([]string, 0),
+			Blocks:       make([]ResumeBlockSummary, 0),
+		}, nil
+	}
+	evidence = applyRunScope(selectUsableEvidence(evidence), scope)
+	if len(evidence) == 0 {
+		return preparedResumeInput{}, ResumeWorkspace{
+			Status:       "blocked",
+			Message:      "所选资料范围没有可用 Evidence，请调整范围后重新匹配。",
 			ExportIssues: make([]string, 0),
 			Blocks:       make([]ResumeBlockSummary, 0),
 		}, nil

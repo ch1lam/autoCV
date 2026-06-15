@@ -129,15 +129,17 @@ func run() error {
 		provider,
 		systemclock.Clock{},
 	)))
+	resumeRepository := sqlite.NewResumeRepository(db)
 	app.RegisterService(application.NewService(appservice.NewMatchService(
 		matchRepository,
+		resumeRepository,
 		profileRepository,
 		jdRepository,
 		provider,
 		systemclock.Clock{},
 	)))
 	resumeService := appservice.NewResumeService(
-		sqlite.NewResumeRepository(db),
+		resumeRepository,
 		matchRepository,
 		profileRepository,
 		jdRepository,

@@ -44,6 +44,8 @@ export {
     RequirementMatchSummary,
     ResumeBlockSummary,
     ResumeWorkspace,
+    RunScopeDocumentSummary,
+    RunScopeSummary,
     SaveEvidenceInput,
     SaveProviderInput,
     SourceDocumentSummary

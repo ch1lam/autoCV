@@ -19,6 +19,7 @@ const defaultMatchAnalysisErr = "match analysis failed"
 
 type MatchService struct {
 	matchRepository   ports.MatchRepository
+	scopeRepository   ports.RunScopeRepository
 	profileRepository ports.ProfileRepository
 	jdRepository      ports.JDRepository
 	suggester         ports.MatchSuggester
@@ -37,6 +38,22 @@ type MatchReview struct {
 	Counts         MatchCounts               `json:"counts"`
 	Dimensions     []MatchDimensionSummary   `json:"dimensions"`
 	Requirements   []RequirementMatchSummary `json:"requirements"`
+	Scope          RunScopeSummary           `json:"scope"`
+}
+
+type RunScopeSummary struct {
+	Mode                string                    `json:"mode"`
+	SelectedCount       int                       `json:"selectedCount"`
+	AvailableCount      int                       `json:"availableCount"`
+	SelectedDocumentIDs []string                  `json:"selectedDocumentIds"`
+	Documents           []RunScopeDocumentSummary `json:"documents"`
+}
+
+type RunScopeDocumentSummary struct {
+	ID           string `json:"id"`
+	OriginalName string `json:"originalName"`
+	Kind         string `json:"kind"`
+	Selected     bool   `json:"selected"`
 }
 
 type MatchCounts struct {
@@ -91,10 +108,12 @@ type preparedMatchInput struct {
 	requirements []domain.MatchRequirement
 	evidence     []domain.Evidence
 	inputHash    string
+	scope        RunScopeSummary
 }
 
 func NewMatchService(
 	matchRepository ports.MatchRepository,
+	scopeRepository ports.RunScopeRepository,
 	profileRepository ports.ProfileRepository,
 	jdRepository ports.JDRepository,
 	suggester ports.MatchSuggester,
@@ -102,6 +121,7 @@ func NewMatchService(
 ) *MatchService {
 	return &MatchService{
 		matchRepository:   matchRepository,
+		scopeRepository:   scopeRepository,
 		profileRepository: profileRepository,
 		jdRepository:      jdRepository,
 		suggester:         suggester,
@@ -111,6 +131,49 @@ func NewMatchService(
 
 func (service *MatchService) GetReview() (MatchReview, error) {
 	return service.getReview(context.Background())
+}
+
+func (service *MatchService) SaveScope(
+	mode string,
+	documentIDs []string,
+) (MatchReview, error) {
+	ctx := context.Background()
+	profile, err := resolveActiveProfile(
+		ctx,
+		service.profileRepository,
+		service.clock.Now(),
+	)
+	if err != nil {
+		return MatchReview{}, err
+	}
+	jd, found, err := service.jdRepository.GetLatest(ctx)
+	if err != nil {
+		return MatchReview{}, err
+	}
+	if !found {
+		return MatchReview{}, errors.New(
+			"save run scope: job description was not found",
+		)
+	}
+	documents, err := service.profileRepository.ListDocuments(ctx, profile.ID)
+	if err != nil {
+		return MatchReview{}, err
+	}
+	scope, err := normalizeRunScope(
+		profile.ID,
+		jd.ID,
+		mode,
+		documentIDs,
+		documents,
+		service.clock.Now(),
+	)
+	if err != nil {
+		return MatchReview{}, err
+	}
+	if err := service.scopeRepository.SaveScope(ctx, scope); err != nil {
+		return MatchReview{}, err
+	}
+	return service.getReview(ctx)
 }
 
 func (service *MatchService) Analyze() (MatchReview, error) {
@@ -210,14 +273,14 @@ func (service *MatchService) getReview(
 			"pending",
 			input.jd,
 			"资料和 JD 已就绪，可以开始建立证据关联。",
-		), nil
+		).withScope(input.scope), nil
 	}
 	if analysis.InputHash != input.inputHash {
 		return emptyMatchReview(
 			"stale",
 			input.jd,
 			"资料或 JD 已变化，旧匹配结果已失效。",
-		), nil
+		).withScope(input.scope), nil
 	}
 	if analysis.Status == "failed" {
 		review := emptyMatchReview(
@@ -227,6 +290,7 @@ func (service *MatchService) getReview(
 		)
 		review.Error = analysis.Error
 		review.UpdatedAt = analysis.UpdatedAt.UTC().Format(timeFormat)
+		review.Scope = input.scope
 		return review, nil
 	}
 	if err := domain.ValidateMatchSuggestions(
@@ -268,14 +332,27 @@ func (service *MatchService) prepareInput(
 		return preparedMatchInput{}, MatchReview{
 			Status:  "blocked",
 			Message: "请先在 JD 工作区粘贴并分析目标岗位。",
+			Scope:   emptyRunScopeSummary(),
 		}, nil
 	}
+	scope, documents, err := resolveRunScope(
+		ctx,
+		service.scopeRepository,
+		service.profileRepository,
+		profile.ID,
+		jd.ID,
+		service.clock.Now(),
+	)
+	if err != nil {
+		return preparedMatchInput{}, MatchReview{}, err
+	}
+	scopeSummary := runScopeSummary(scope, documents)
 	if jd.AnalysisStatus != "succeeded" || jd.AnalysisJSON == "" {
 		return preparedMatchInput{}, emptyMatchReview(
 			"blocked",
 			jd,
 			"请先完成当前 JD 的结构化分析。",
-		), nil
+		).withScope(scopeSummary), nil
 	}
 	analysis, err := domain.DecodeJDAnalysis([]byte(jd.AnalysisJSON))
 	if err != nil {
@@ -297,15 +374,19 @@ func (service *MatchService) prepareInput(
 			"blocked",
 			jd,
 			"请先导入 Markdown 职业资料，生成可追溯 Evidence。",
-		), nil
+		).withScope(scopeSummary), nil
 	}
-	evidence := selectUsableEvidence(storedEvidence)
+	evidence := applyRunScope(selectUsableEvidence(storedEvidence), scope)
 	if len(evidence) == 0 {
+		message := "现有 Evidence 均存在未解决冲突，请先在资料库中确认采用版本。"
+		if scope.Mode == domain.RunScopeSelected {
+			message = "所选资料范围没有可用 Evidence，请调整范围或先解决冲突。"
+		}
 		return preparedMatchInput{}, emptyMatchReview(
 			"blocked",
 			jd,
-			"现有 Evidence 均存在未解决冲突，请先在资料库中确认采用版本。",
-		), nil
+			message,
+		).withScope(scopeSummary), nil
 	}
 	inputHash, err := hashMatchInput(jd, requirements, evidence)
 	if err != nil {
@@ -317,6 +398,7 @@ func (service *MatchService) prepareInput(
 		requirements: requirements,
 		evidence:     evidence,
 		inputHash:    inputHash,
+		scope:        scopeSummary,
 	}, MatchReview{}, nil
 }
 
@@ -502,6 +584,7 @@ func matchReviewFromAnalysis(
 		UpdatedAt:      analysis.UpdatedAt.UTC().Format(timeFormat),
 		Dimensions:     make([]MatchDimensionSummary, 0, len(score.Dimensions)),
 		Requirements:   make([]RequirementMatchSummary, 0, len(analysis.Requirements)),
+		Scope:          input.scope,
 	}
 	for _, dimension := range score.Dimensions {
 		review.Dimensions = append(
@@ -589,7 +672,46 @@ func emptyMatchReview(
 		Company:      jd.Company,
 		Dimensions:   make([]MatchDimensionSummary, 0),
 		Requirements: make([]RequirementMatchSummary, 0),
+		Scope:        emptyRunScopeSummary(),
 	}
+}
+
+func (review MatchReview) withScope(scope RunScopeSummary) MatchReview {
+	review.Scope = scope
+	return review
+}
+
+func emptyRunScopeSummary() RunScopeSummary {
+	return RunScopeSummary{
+		Mode:                string(domain.RunScopeAll),
+		SelectedDocumentIDs: make([]string, 0),
+		Documents:           make([]RunScopeDocumentSummary, 0),
+	}
+}
+
+func runScopeSummary(
+	scope domain.ResumeRunScope,
+	documents []domain.SourceDocument,
+) RunScopeSummary {
+	summary := RunScopeSummary{
+		Mode:                string(scope.Mode),
+		AvailableCount:      len(documents),
+		SelectedDocumentIDs: append([]string(nil), scope.DocumentIDs...),
+		Documents:           make([]RunScopeDocumentSummary, 0, len(documents)),
+	}
+	for _, document := range documents {
+		selected := runScopeContainsDocument(scope, document.ID)
+		if selected {
+			summary.SelectedCount++
+		}
+		summary.Documents = append(summary.Documents, RunScopeDocumentSummary{
+			ID:           document.ID,
+			OriginalName: document.OriginalName,
+			Kind:         document.Kind,
+			Selected:     selected,
+		})
+	}
+	return summary
 }
 
 func matchCategoryLabel(category domain.RequirementCategory) string {
