@@ -33,4 +33,13 @@ type ProfileRepository interface {
 	SaveImportedDocument(context.Context, ImportedDocument) error
 	ListDocuments(context.Context, string) ([]domain.SourceDocument, error)
 	ListEvidence(context.Context, string) ([]domain.Evidence, error)
+	UpdateEvidence(
+		context.Context,
+		string,
+		string,
+		string,
+		string,
+		bool,
+		time.Time,
+	) error
 }

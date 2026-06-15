@@ -44,6 +44,7 @@ export {
     RequirementMatchSummary,
     ResumeBlockSummary,
     ResumeWorkspace,
+    SaveEvidenceInput,
     SaveProviderInput,
     SourceDocumentSummary
 } from "./models.js";

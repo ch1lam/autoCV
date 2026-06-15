@@ -415,6 +415,47 @@ func (repository *ProfileRepository) ListEvidence(
 	return items, nil
 }
 
+func (repository *ProfileRepository) UpdateEvidence(
+	ctx context.Context,
+	profileID string,
+	evidenceID string,
+	title string,
+	content string,
+	userVerified bool,
+	updatedAt time.Time,
+) error {
+	result, err := repository.db.ExecContext(
+		ctx,
+		`UPDATE evidence
+		    SET title = ?,
+		        content = ?,
+		        user_verified = ?,
+		        updated_at = ?
+		  WHERE id = ?
+		    AND profile_id = ?`,
+		title,
+		content,
+		userVerified,
+		formatTime(updatedAt),
+		evidenceID,
+		profileID,
+	)
+	if err != nil {
+		return fmt.Errorf("update evidence: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read updated evidence result: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf(
+			"evidence %q not found in active profile",
+			evidenceID,
+		)
+	}
+	return nil
+}
+
 func (repository *ProfileRepository) profileByID(
 	ctx context.Context,
 	id string,

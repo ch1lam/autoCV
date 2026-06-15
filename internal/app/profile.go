@@ -56,12 +56,14 @@ type SourceDocumentSummary struct {
 }
 
 type EvidenceSummary struct {
-	ID         string                  `json:"id"`
-	Kind       string                  `json:"kind"`
-	Title      string                  `json:"title"`
-	Content    string                  `json:"content"`
-	Confidence float64                 `json:"confidence"`
-	Sources    []EvidenceSourceSummary `json:"sources"`
+	ID           string                  `json:"id"`
+	Kind         string                  `json:"kind"`
+	Title        string                  `json:"title"`
+	Content      string                  `json:"content"`
+	Confidence   float64                 `json:"confidence"`
+	UserVerified bool                    `json:"userVerified"`
+	UpdatedAt    string                  `json:"updatedAt"`
+	Sources      []EvidenceSourceSummary `json:"sources"`
 }
 
 type EvidenceSourceSummary struct {
@@ -82,6 +84,13 @@ type ProfileSearchResult struct {
 	DocumentName  string `json:"documentName"`
 	Title         string `json:"title"`
 	Snippet       string `json:"snippet"`
+}
+
+type SaveEvidenceInput struct {
+	EvidenceID   string `json:"evidenceId"`
+	Title        string `json:"title"`
+	Content      string `json:"content"`
+	UserVerified bool   `json:"userVerified"`
 }
 
 type ImportMarkdownResult struct {
@@ -140,6 +149,12 @@ func (service *ProfileService) Search(
 	return service.searchProfile(context.Background(), query)
 }
 
+func (service *ProfileService) SaveEvidence(
+	input SaveEvidenceInput,
+) (ProfileOverview, error) {
+	return service.saveEvidence(context.Background(), input)
+}
+
 func (service *ProfileService) ImportMarkdown() (ImportMarkdownResult, error) {
 	selected, accepted, err := service.picker.PickMarkdown()
 	if err != nil {
@@ -149,6 +164,61 @@ func (service *ProfileService) ImportMarkdown() (ImportMarkdownResult, error) {
 		return ImportMarkdownResult{Cancelled: true}, nil
 	}
 	return service.importMarkdown(context.Background(), selected)
+}
+
+func (service *ProfileService) saveEvidence(
+	ctx context.Context,
+	input SaveEvidenceInput,
+) (ProfileOverview, error) {
+	input.EvidenceID = strings.TrimSpace(input.EvidenceID)
+	input.Title = strings.TrimSpace(input.Title)
+	input.Content = strings.TrimSpace(input.Content)
+	if input.EvidenceID == "" {
+		return ProfileOverview{}, errors.New("Evidence id is empty")
+	}
+	if input.Title == "" {
+		return ProfileOverview{}, errors.New("Evidence title is empty")
+	}
+	if len([]rune(input.Title)) > 240 {
+		return ProfileOverview{}, errors.New(
+			"Evidence title must be 240 characters or fewer",
+		)
+	}
+	if input.Content == "" {
+		return ProfileOverview{}, errors.New("Evidence content is empty")
+	}
+	if len([]rune(input.Content)) > 8000 {
+		return ProfileOverview{}, errors.New(
+			"Evidence content must be 8000 characters or fewer",
+		)
+	}
+
+	profile, err := resolveActiveProfile(
+		ctx,
+		service.repository,
+		service.clock.Now(),
+	)
+	if err != nil {
+		return ProfileOverview{}, err
+	}
+	if err := service.repository.UpdateEvidence(
+		ctx,
+		profile.ID,
+		input.EvidenceID,
+		input.Title,
+		input.Content,
+		input.UserVerified,
+		service.clock.Now().UTC(),
+	); err != nil {
+		return ProfileOverview{}, err
+	}
+	slog.Info(
+		"evidence.updated",
+		slog.String("profile_id", profile.ID),
+		slog.String("evidence_id", input.EvidenceID),
+		slog.Bool("user_verified", input.UserVerified),
+	)
+	return service.getOverview(ctx)
 }
 
 func (service *ProfileService) searchProfile(
@@ -542,12 +612,14 @@ func profileSummary(profile domain.Profile) ProfileSummary {
 
 func evidenceSummary(item domain.Evidence) EvidenceSummary {
 	summary := EvidenceSummary{
-		ID:         item.ID,
-		Kind:       item.Kind,
-		Title:      item.Title,
-		Content:    item.Content,
-		Confidence: item.Confidence,
-		Sources:    make([]EvidenceSourceSummary, 0, len(item.Sources)),
+		ID:           item.ID,
+		Kind:         item.Kind,
+		Title:        item.Title,
+		Content:      item.Content,
+		Confidence:   item.Confidence,
+		UserVerified: item.UserVerified,
+		UpdatedAt:    item.UpdatedAt.UTC().Format(time.RFC3339),
+		Sources:      make([]EvidenceSourceSummary, 0, len(item.Sources)),
 	}
 	for _, source := range item.Sources {
 		summary.Sources = append(summary.Sources, EvidenceSourceSummary{

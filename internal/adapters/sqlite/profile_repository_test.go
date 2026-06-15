@@ -218,6 +218,85 @@ func TestProfileRepositoryRollsBackIncompleteImport(t *testing.T) {
 	}
 }
 
+func TestProfileRepositoryUpdatesEvidenceAndSearchIndex(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDatabase(
+		t,
+		ctx,
+		filepath.Join(t.TempDir(), "update-evidence.db"),
+	)
+	defer db.Close()
+	repository := NewProfileRepository(db)
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	profile, err := repository.EnsureDefaultProfile(
+		ctx,
+		"Main Profile",
+		"zh-CN",
+		now,
+	)
+	if err != nil {
+		t.Fatalf("ensure profile: %v", err)
+	}
+	if err := repository.SaveImportedDocument(
+		ctx,
+		importedDocumentFixture(profile.ID, now),
+	); err != nil {
+		t.Fatalf("save imported document: %v", err)
+	}
+
+	updatedAt := now.Add(time.Hour)
+	if err := repository.UpdateEvidence(
+		ctx,
+		profile.ID,
+		"evidence-1",
+		"Platform reliability ownership",
+		"Improved service reliability with explicit timeout controls.",
+		true,
+		updatedAt,
+	); err != nil {
+		t.Fatalf("update evidence: %v", err)
+	}
+	items, err := repository.ListEvidence(ctx, profile.ID)
+	if err != nil {
+		t.Fatalf("list updated evidence: %v", err)
+	}
+	if len(items) != 1 ||
+		items[0].Title != "Platform reliability ownership" ||
+		!items[0].UserVerified ||
+		!items[0].UpdatedAt.Equal(updatedAt) ||
+		len(items[0].Sources) != 1 {
+		t.Fatalf("unexpected updated evidence %#v", items)
+	}
+
+	search := NewProfileSearch(db)
+	oldResults, err := search.Search(ctx, profile.ID, "delivery", 20)
+	if err != nil {
+		t.Fatalf("search old evidence title: %v", err)
+	}
+	if len(oldResults) != 0 {
+		t.Fatalf("expected old evidence title to leave index, got %#v", oldResults)
+	}
+	newResults, err := search.Search(ctx, profile.ID, "reliability", 20)
+	if err != nil {
+		t.Fatalf("search updated evidence: %v", err)
+	}
+	if len(newResults) != 1 ||
+		newResults[0].EntityType != "evidence" {
+		t.Fatalf("expected updated evidence in search index, got %#v", newResults)
+	}
+	if err := repository.UpdateEvidence(
+		ctx,
+		"other-profile",
+		"evidence-1",
+		"Wrong profile",
+		"Must not update.",
+		true,
+		updatedAt,
+	); err == nil {
+		t.Fatal("expected cross-profile update to fail")
+	}
+}
+
 func importedDocumentFixture(profileID string, now time.Time) ports.ImportedDocument {
 	return ports.ImportedDocument{
 		Document: domain.SourceDocument{

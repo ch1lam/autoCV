@@ -233,6 +233,75 @@ func TestProfileServiceValidatesSearchQuery(t *testing.T) {
 	}
 }
 
+func TestProfileServiceEditsAndConfirmsEvidence(t *testing.T) {
+	service, _, _, _, _ := newProfileServiceTest(t)
+	if _, err := service.ImportMarkdown(); err != nil {
+		t.Fatalf("import Markdown: %v", err)
+	}
+	overview, err := service.GetOverview()
+	if err != nil {
+		t.Fatalf("get overview: %v", err)
+	}
+	if len(overview.Evidence) == 0 {
+		t.Fatal("expected imported evidence")
+	}
+
+	service.clock = fixedClock{now: profileTestTime.Add(time.Hour)}
+	updated, err := service.SaveEvidence(SaveEvidenceInput{
+		EvidenceID:   overview.Evidence[0].ID,
+		Title:        "  已确认的后端交付能力  ",
+		Content:      "  负责核心服务交付并改善稳定性。  ",
+		UserVerified: true,
+	})
+	if err != nil {
+		t.Fatalf("save evidence: %v", err)
+	}
+	item := updated.Evidence[0]
+	if item.Title != "已确认的后端交付能力" ||
+		item.Content != "负责核心服务交付并改善稳定性。" ||
+		!item.UserVerified ||
+		item.UpdatedAt != profileTestTime.Add(time.Hour).Format(time.RFC3339) {
+		t.Fatalf("unexpected saved evidence %#v", item)
+	}
+
+	if _, err := service.CreateProfile("其他岗位", "zh-CN"); err != nil {
+		t.Fatalf("create second profile: %v", err)
+	}
+	if _, err := service.SaveEvidence(SaveEvidenceInput{
+		EvidenceID:   item.ID,
+		Title:        item.Title,
+		Content:      item.Content,
+		UserVerified: true,
+	}); err == nil {
+		t.Fatal("expected active profile isolation")
+	}
+}
+
+func TestProfileServiceValidatesEvidenceChanges(t *testing.T) {
+	service, _, _, _, _ := newProfileServiceTest(t)
+
+	cases := []SaveEvidenceInput{
+		{Title: "Title", Content: "Content"},
+		{EvidenceID: "evidence", Content: "Content"},
+		{EvidenceID: "evidence", Title: "Title"},
+		{
+			EvidenceID: "evidence",
+			Title:      string(make([]rune, 241)),
+			Content:    "Content",
+		},
+		{
+			EvidenceID: "evidence",
+			Title:      "Title",
+			Content:    string(make([]rune, 8001)),
+		},
+	}
+	for _, input := range cases {
+		if _, err := service.SaveEvidence(input); err == nil {
+			t.Fatalf("expected invalid evidence input error for %#v", input)
+		}
+	}
+}
+
 func TestProfileServiceCreatesSelectsAndIsolatesProfiles(t *testing.T) {
 	service, _, _, _, _ := newProfileServiceTest(t)
 

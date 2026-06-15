@@ -56,6 +56,8 @@ export class EvidenceSummary {
     "title": string;
     "content": string;
     "confidence": number;
+    "userVerified": boolean;
+    "updatedAt": string;
     "sources": EvidenceSourceSummary[];
 
     /** Creates a new EvidenceSummary instance. */
@@ -75,6 +77,12 @@ export class EvidenceSummary {
         if (!("confidence" in $$source)) {
             this["confidence"] = 0;
         }
+        if (!("userVerified" in $$source)) {
+            this["userVerified"] = false;
+        }
+        if (!("updatedAt" in $$source)) {
+            this["updatedAt"] = "";
+        }
         if (!("sources" in $$source)) {
             this["sources"] = [];
         }
@@ -86,10 +94,10 @@ export class EvidenceSummary {
      * Creates a new EvidenceSummary instance from a string or object.
      */
     static createFrom($$source: any = {}): EvidenceSummary {
-        const $$createField5_0 = $$createType1;
+        const $$createField7_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("sources" in $$parsedSource) {
-            $$parsedSource["sources"] = $$createField5_0($$parsedSource["sources"]);
+            $$parsedSource["sources"] = $$createField7_0($$parsedSource["sources"]);
         }
         return new EvidenceSummary($$parsedSource as Partial<EvidenceSummary>);
     }
@@ -1129,6 +1137,39 @@ export class ResumeWorkspace {
             $$parsedSource["blocks"] = $$createField14_0($$parsedSource["blocks"]);
         }
         return new ResumeWorkspace($$parsedSource as Partial<ResumeWorkspace>);
+    }
+}
+
+export class SaveEvidenceInput {
+    "evidenceId": string;
+    "title": string;
+    "content": string;
+    "userVerified": boolean;
+
+    /** Creates a new SaveEvidenceInput instance. */
+    constructor($$source: Partial<SaveEvidenceInput> = {}) {
+        if (!("evidenceId" in $$source)) {
+            this["evidenceId"] = "";
+        }
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("content" in $$source)) {
+            this["content"] = "";
+        }
+        if (!("userVerified" in $$source)) {
+            this["userVerified"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SaveEvidenceInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SaveEvidenceInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SaveEvidenceInput($$parsedSource as Partial<SaveEvidenceInput>);
     }
 }
 
