@@ -250,7 +250,7 @@ Markdown 职业资料
 - [x] 增加 `source_chunks`、`evidence` 和 `evidence_sources` 表。
 - [x] 建立 FTS5 索引。
 - [x] 支持 Evidence 的查看、编辑和用户确认。
-- [ ] 处理冲突信息和重复 Evidence。
+- [x] 处理冲突信息和重复 Evidence。
 - [ ] 允许为一次 Run 选择资料范围。
 - [ ] 增加 Profile 导出。
 
