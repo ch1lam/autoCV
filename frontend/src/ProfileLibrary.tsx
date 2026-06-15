@@ -39,6 +39,7 @@ type ProfileLibraryProps = {
   onSearch: () => void;
   onSearchChange: (value: string) => void;
   onSearchClear: () => void;
+  onResolveEvidenceConflict: (evidenceID: string) => Promise<boolean>;
   onSaveEvidence: (input: SaveEvidenceInput) => Promise<boolean>;
   onSelectSearchResult: (result: ProfileSearchResult) => void;
   onSelectEvidence: (evidence: EvidenceSummary) => void;
@@ -90,6 +91,38 @@ function formatImportedAt(value: string) {
   }).format(date);
 }
 
+function getEvidenceConflictGroup(
+  evidence: EvidenceSummary,
+  items: EvidenceSummary[],
+) {
+  const conflicts = evidence.conflictEvidenceIds ?? [];
+  return [
+    evidence,
+    ...conflicts
+      .map((evidenceID) => items.find((item) => item.id === evidenceID))
+      .filter((item): item is EvidenceSummary => item !== undefined),
+  ];
+}
+
+function getEvidenceReviewState(
+  evidence: EvidenceSummary,
+  items: EvidenceSummary[],
+) {
+  const group = getEvidenceConflictGroup(evidence, items);
+  if (group.length === 1) {
+    return evidence.userVerified
+      ? { label: "已确认", tone: "verified" }
+      : null;
+  }
+  const adopted = group.filter((item) => item.userVerified);
+  if (adopted.length === 1) {
+    return evidence.userVerified
+      ? { label: "已采用", tone: "verified" }
+      : { label: "已排除", tone: "excluded" };
+  }
+  return { label: "待处理冲突", tone: "conflict" };
+}
+
 function ProfileLibrary({
   error,
   feedback,
@@ -100,6 +133,7 @@ function ProfileLibrary({
   onSearch,
   onSearchChange,
   onSearchClear,
+  onResolveEvidenceConflict,
   onSaveEvidence,
   onSelectSearchResult,
   onSelectEvidence,
@@ -130,6 +164,20 @@ function ProfileLibrary({
     ? parseLocator(selectedSource.locatorJson)
     : {};
   const isEditingEvidence = editingEvidenceID === selectedEvidence?.id;
+  const conflictGroup =
+    selectedEvidence && overview
+      ? getEvidenceConflictGroup(selectedEvidence, overview.evidence)
+      : [];
+  const hasConflict = conflictGroup.length > 1;
+  const adoptedConflictVersions = conflictGroup.filter(
+    (item) => item.userVerified,
+  );
+  const conflictIsResolved =
+    hasConflict && adoptedConflictVersions.length === 1;
+  const selectedReviewState =
+    selectedEvidence && overview
+      ? getEvidenceReviewState(selectedEvidence, overview.evidence)
+      : null;
 
   useEffect(() => {
     setEditingEvidenceID("");
@@ -465,45 +513,67 @@ function ProfileLibrary({
                     <span>来源</span>
                     <span />
                   </div>
-                  {overview.evidence.map((evidence) => (
-                    <button
-                      className={`profile-evidence-row ${
-                        evidence.id === selectedEvidence?.id
-                          ? "is-selected"
-                          : ""
-                      }`}
-                      key={evidence.id}
-                      onClick={() => onSelectEvidence(evidence)}
-                      type="button"
-                    >
-                      <span className="profile-evidence-title">
-                        <span className="profile-evidence-title-line">
-                          <strong>{evidence.title}</strong>
-                          {evidence.userVerified && (
-                            <span>
-                              <IconCircleCheck
-                                aria-hidden="true"
-                                size={12}
-                                stroke={1.9}
-                              />
-                              已确认
-                            </span>
-                          )}
+                  {overview.evidence.map((evidence) => {
+                    const reviewState = getEvidenceReviewState(
+                      evidence,
+                      overview.evidence,
+                    );
+                    return (
+                      <button
+                        className={`profile-evidence-row ${
+                          evidence.id === selectedEvidence?.id
+                            ? "is-selected"
+                            : ""
+                        }`}
+                        key={evidence.id}
+                        onClick={() => onSelectEvidence(evidence)}
+                        type="button"
+                      >
+                        <span className="profile-evidence-title">
+                          <span className="profile-evidence-title-line">
+                            <strong>{evidence.title}</strong>
+                            {reviewState && (
+                              <span
+                                className={`profile-evidence-status is-${reviewState.tone}`}
+                              >
+                                {reviewState.tone === "conflict" ? (
+                                  <IconAlertCircle
+                                    aria-hidden="true"
+                                    size={12}
+                                    stroke={1.9}
+                                  />
+                                ) : reviewState.tone === "excluded" ? (
+                                  <IconX
+                                    aria-hidden="true"
+                                    size={12}
+                                    stroke={1.9}
+                                  />
+                                ) : (
+                                  <IconCircleCheck
+                                    aria-hidden="true"
+                                    size={12}
+                                    stroke={1.9}
+                                  />
+                                )}
+                                {reviewState.label}
+                              </span>
+                            )}
+                          </span>
+                          <small>{evidence.content}</small>
                         </span>
-                        <small>{evidence.content}</small>
-                      </span>
-                      <span className="evidence-kind">
-                        {evidenceKindLabels[evidence.kind] ?? evidence.kind}
-                      </span>
-                      <span>{Math.round(evidence.confidence * 100)}%</span>
-                      <span>{evidence.sources.length}</span>
-                      <IconChevronRight
-                        aria-hidden="true"
-                        size={18}
-                        stroke={1.55}
-                      />
-                    </button>
-                  ))}
+                        <span className="evidence-kind">
+                          {evidenceKindLabels[evidence.kind] ?? evidence.kind}
+                        </span>
+                        <span>{Math.round(evidence.confidence * 100)}%</span>
+                        <span>{evidence.sources.length}</span>
+                        <IconChevronRight
+                          aria-hidden="true"
+                          size={18}
+                          stroke={1.55}
+                        />
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </section>
@@ -625,16 +695,32 @@ function ProfileLibrary({
                     </span>
                     <span
                       className={
-                        selectedEvidence.userVerified
+                        selectedReviewState?.tone === "verified"
                           ? "is-verified"
-                          : "is-unverified"
+                          : selectedReviewState?.tone === "conflict"
+                            ? "is-conflict"
+                            : selectedReviewState?.tone === "excluded"
+                              ? "is-excluded"
+                              : "is-unverified"
                       }
                     >
-                      {selectedEvidence.userVerified ? (
+                      {selectedReviewState?.tone === "verified" ? (
                         <IconCircleCheck
                           aria-hidden="true"
                           size={13}
                           stroke={1.9}
+                        />
+                      ) : selectedReviewState?.tone === "conflict" ? (
+                        <IconAlertCircle
+                          aria-hidden="true"
+                          size={13}
+                          stroke={1.8}
+                        />
+                      ) : selectedReviewState?.tone === "excluded" ? (
+                        <IconX
+                          aria-hidden="true"
+                          size={13}
+                          stroke={1.8}
                         />
                       ) : (
                         <IconInfoCircle
@@ -643,9 +729,11 @@ function ProfileLibrary({
                           stroke={1.8}
                         />
                       )}
-                      {selectedEvidence.userVerified
-                        ? "用户已确认"
-                        : "AI 提取，待确认"}
+                      {hasConflict
+                        ? selectedReviewState?.label
+                        : selectedEvidence.userVerified
+                          ? "用户已确认"
+                          : "AI 提取，待确认"}
                     </span>
                   </div>
                   <h3>{selectedEvidence.title}</h3>
@@ -668,7 +756,7 @@ function ProfileLibrary({
                       </div>
                     )}
                   </dl>
-                  {!selectedEvidence.userVerified && (
+                  {!selectedEvidence.userVerified && !hasConflict && (
                     <div className="profile-evidence-confirmation">
                       <span>
                         确认后，这条 Evidence 可作为用户认可的事实继续参与生成。
@@ -700,6 +788,94 @@ function ProfileLibrary({
                 </>
               )}
             </section>
+
+            {hasConflict && !isEditingEvidence && (
+              <section
+                aria-label="冲突版本"
+                className="profile-conflict-review"
+              >
+                <header>
+                  <div>
+                    <h3>冲突版本</h3>
+                    <p>
+                      {conflictIsResolved
+                        ? "已选择一个版本参与匹配与生成，可随时改用其他版本。"
+                        : "同一主题存在不同事实，请检查来源后采用一个版本。"}
+                    </p>
+                  </div>
+                  <span>{conflictGroup.length} 个版本</span>
+                </header>
+                <div className="profile-conflict-list">
+                  {conflictGroup.map((item) => {
+                    const isCurrent = item.id === selectedEvidence.id;
+                    const state = getEvidenceReviewState(
+                      item,
+                      overview?.evidence ?? [],
+                    );
+                    return (
+                      <button
+                        aria-label={`查看冲突版本 ${item.title}`}
+                        className={`profile-conflict-row ${
+                          isCurrent ? "is-current" : ""
+                        }`}
+                        key={item.id}
+                        onClick={() => onSelectEvidence(item)}
+                        type="button"
+                      >
+                        <span>
+                          <strong>{item.title}</strong>
+                          <small>{item.content}</small>
+                        </span>
+                        <span
+                          className={`profile-conflict-state is-${
+                            state?.tone ?? "conflict"
+                          }`}
+                        >
+                          {state?.label ?? "待处理冲突"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {(!conflictIsResolved || !selectedEvidence.userVerified) && (
+                  <div className="profile-conflict-action">
+                    <span>
+                      {conflictIsResolved
+                        ? "改用后，当前采用的版本会自动退出匹配与生成。"
+                        : "采用代表你确认当前版本准确，其他冲突版本会被排除。"}
+                    </span>
+                    <button
+                      className="button button--primary"
+                      disabled={isSavingEvidence}
+                      onClick={() =>
+                        void onResolveEvidenceConflict(selectedEvidence.id)
+                      }
+                      type="button"
+                    >
+                      {isSavingEvidence ? (
+                        <IconRefresh
+                          aria-hidden="true"
+                          className="is-spinning"
+                          size={16}
+                          stroke={1.6}
+                        />
+                      ) : (
+                        <IconCircleCheck
+                          aria-hidden="true"
+                          size={16}
+                          stroke={1.8}
+                        />
+                      )}
+                      {isSavingEvidence
+                        ? "处理中"
+                        : conflictIsResolved
+                          ? "改用此版本"
+                          : "采用此版本"}
+                    </button>
+                  </div>
+                )}
+              </section>
+            )}
 
             <section className="sources profile-sources">
               <h3>来源定位（{selectedEvidence.sources.length}）</h3>

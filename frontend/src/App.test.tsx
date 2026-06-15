@@ -17,6 +17,7 @@ const {
   getOverviewMock,
   importMarkdownMock,
   renderPDFMock,
+  resolveEvidenceConflictMock,
   generateResumeMock,
   getResumeWorkspaceMock,
   getSettingsMock,
@@ -43,6 +44,7 @@ const {
   getSettingsMock: vi.fn(),
   importMarkdownMock: vi.fn(),
   renderPDFMock: vi.fn(),
+  resolveEvidenceConflictMock: vi.fn(),
   saveJDDraftMock: vi.fn(),
   saveEvidenceMock: vi.fn(),
   saveProviderMock: vi.fn(),
@@ -75,6 +77,7 @@ vi.mock("../bindings/github.com/ch1lam/autocv/internal/app", () => ({
     CreateProfile: createProfileMock,
     GetOverview: getOverviewMock,
     ImportMarkdown: importMarkdownMock,
+    ResolveEvidenceConflict: resolveEvidenceConflictMock,
     SaveEvidence: saveEvidenceMock,
     Search: searchProfileMock,
     SelectProfile: selectProfileMock,
@@ -130,6 +133,7 @@ const profileOverview = {
       confidence: 0.75,
       userVerified: false,
       updatedAt: "2026-06-11T01:05:00Z",
+      conflictEvidenceIds: [],
       sources: [
         {
           chunkId: "chunk-1",
@@ -533,6 +537,7 @@ describe("Paper Trail match review", () => {
       analysis: null,
     });
     saveEvidenceMock.mockReset().mockResolvedValue(profileOverview);
+    resolveEvidenceConflictMock.mockReset().mockResolvedValue(profileOverview);
     saveProviderMock.mockReset().mockImplementation((input) =>
       Promise.resolve({
         ...providerSettings,
@@ -838,6 +843,38 @@ describe("Paper Trail match review", () => {
     ).toBeInTheDocument();
   });
 
+  it("reports merged and conflicting Evidence after import", async () => {
+    const user = userEvent.setup();
+    importMarkdownMock.mockResolvedValue({
+      cancelled: false,
+      duplicate: false,
+      document: {
+        ...profileOverview.documents[0],
+        originalName: "architecture-notes.md",
+      },
+      chunkCount: 2,
+      evidenceCount: 1,
+      mergedEvidenceCount: 2,
+      conflictEvidenceCount: 1,
+      warnings: [
+        "已合并 2 条重复 Evidence，并保留新增来源。",
+        "发现 1 条冲突 Evidence，请在资料库中确认采用版本。",
+      ],
+    });
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "资料库" }));
+    await user.click(
+      screen.getAllByRole("button", { name: "导入 Markdown" })[0],
+    );
+
+    expect(
+      await screen.findByText(
+        "已导入 architecture-notes.md，新增 1 条、合并 2 条 Evidence；发现 1 条冲突待处理。",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("searches Profile sources and shows document snippets", async () => {
     const user = userEvent.setup();
     searchProfileMock.mockResolvedValue([
@@ -963,6 +1000,70 @@ describe("Paper Trail match review", () => {
         name: "支付平台后端交付",
       }),
     ).toBeInTheDocument();
+    expect(getMatchReviewMock).toHaveBeenCalledTimes(2);
+    expect(getResumeWorkspaceMock).toHaveBeenCalledTimes(2);
+    expect(getPDFWorkspaceMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("reviews and adopts one conflicting Evidence version", async () => {
+    const user = userEvent.setup();
+    const conflictedOverview = {
+      ...profileOverview,
+      evidence: [
+        {
+          ...profileOverview.evidence[0],
+          conflictEvidenceIds: ["evidence-2"],
+        },
+        {
+          ...profileOverview.evidence[0],
+          id: "evidence-2",
+          title: "支付平台架构职责",
+          content: "负责支付平台架构设计与技术方案评审。",
+          conflictEvidenceIds: ["evidence-1"],
+          sources: [
+            {
+              ...profileOverview.evidence[0].sources[0],
+              chunkId: "chunk-2",
+              documentId: "document-2",
+              documentName: "architecture-notes.md",
+              chunkText: "负责支付平台架构设计与技术方案评审。",
+            },
+          ],
+        },
+      ],
+    };
+    const resolvedOverview = {
+      ...conflictedOverview,
+      evidence: conflictedOverview.evidence.map((evidence) => ({
+        ...evidence,
+        userVerified: evidence.id === "evidence-1",
+      })),
+    };
+    getOverviewMock.mockResolvedValue(conflictedOverview);
+    resolveEvidenceConflictMock.mockResolvedValue(resolvedOverview);
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "资料库" }));
+    const conflictReview = await screen.findByRole("region", {
+      name: "冲突版本",
+    });
+    expect(within(conflictReview).getAllByText("待处理冲突")).toHaveLength(2);
+    expect(
+      within(conflictReview).getByText("负责支付平台架构设计与技术方案评审。"),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(conflictReview).getByRole("button", { name: "采用此版本" }),
+    );
+
+    expect(resolveEvidenceConflictMock).toHaveBeenCalledWith("evidence-1");
+    expect(
+      await screen.findByText(
+        "已采用此 Evidence，其他冲突版本不再参与匹配与生成。",
+      ),
+    ).toBeInTheDocument();
+    expect(within(conflictReview).getByText("已采用")).toBeInTheDocument();
+    expect(within(conflictReview).getByText("已排除")).toBeInTheDocument();
     expect(getMatchReviewMock).toHaveBeenCalledTimes(2);
     expect(getResumeWorkspaceMock).toHaveBeenCalledTimes(2);
     expect(getPDFWorkspaceMock).toHaveBeenCalledTimes(2);

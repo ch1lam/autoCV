@@ -457,10 +457,19 @@ function App() {
       await refreshMatch();
       await refreshResume();
       await refreshPDF();
+      const mergedEvidenceCount = result.mergedEvidenceCount ?? 0;
+      const conflictEvidenceCount = result.conflictEvidenceCount ?? 0;
+      const hasEvidenceReview =
+        mergedEvidenceCount > 0 || conflictEvidenceCount > 0;
       setProfileFeedback({
-        tone: result.warnings.length > 0 ? "warning" : "success",
+        tone:
+          result.warnings.length > 0 || conflictEvidenceCount > 0
+            ? "warning"
+            : "success",
         text:
-          result.warnings.length > 0
+          hasEvidenceReview
+            ? `已导入 ${result.document.originalName}，新增 ${result.evidenceCount} 条、合并 ${mergedEvidenceCount} 条 Evidence；${conflictEvidenceCount > 0 ? `发现 ${conflictEvidenceCount} 条冲突待处理。` : "重复内容的来源已合并。"}`
+            : result.warnings.length > 0
             ? `已导入 ${result.document.originalName}，生成 ${result.evidenceCount} 条 Evidence；另有 ${result.warnings.length} 条解析提示。`
             : `已导入 ${result.document.originalName}，生成 ${result.evidenceCount} 条可追溯 Evidence。`,
       });
@@ -570,6 +579,33 @@ function App() {
           error instanceof Error
             ? `保存 Evidence 失败：${error.message}`
             : "保存 Evidence 失败，请重试。",
+      });
+      return false;
+    } finally {
+      setIsSavingProfileEvidence(false);
+    }
+  };
+
+  const handleResolveProfileEvidenceConflict = async (evidenceID: string) => {
+    setIsSavingProfileEvidence(true);
+    setProfileFeedback(null);
+    try {
+      const overview =
+        await ProfileService.ResolveEvidenceConflict(evidenceID);
+      applyProfileOverview(overview);
+      await Promise.all([refreshMatch(), refreshResume(), refreshPDF()]);
+      setProfileFeedback({
+        tone: "success",
+        text: "已采用此 Evidence，其他冲突版本不再参与匹配与生成。",
+      });
+      return true;
+    } catch (error) {
+      setProfileFeedback({
+        tone: "error",
+        text:
+          error instanceof Error
+            ? `处理 Evidence 冲突失败：${error.message}`
+            : "处理 Evidence 冲突失败，请重试。",
       });
       return false;
     } finally {
@@ -1405,6 +1441,7 @@ function App() {
             onSearch={() => void handleProfileSearch()}
             onSearchChange={handleProfileSearchChange}
             onSearchClear={handleProfileSearchClear}
+            onResolveEvidenceConflict={handleResolveProfileEvidenceConflict}
             onSaveEvidence={handleSaveProfileEvidence}
             onSelectSearchResult={handleSelectProfileSearchResult}
             onSelectEvidence={handleSelectProfileEvidence}
