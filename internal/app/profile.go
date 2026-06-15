@@ -158,6 +158,15 @@ func (service *ProfileService) SaveEvidence(
 	return service.saveEvidence(context.Background(), input)
 }
 
+func (service *ProfileService) ResolveEvidenceConflict(
+	evidenceID string,
+) (ProfileOverview, error) {
+	return service.resolveEvidenceConflict(
+		context.Background(),
+		evidenceID,
+	)
+}
+
 func (service *ProfileService) ImportMarkdown() (ImportMarkdownResult, error) {
 	selected, accepted, err := service.picker.PickMarkdown()
 	if err != nil {
@@ -167,6 +176,66 @@ func (service *ProfileService) ImportMarkdown() (ImportMarkdownResult, error) {
 		return ImportMarkdownResult{Cancelled: true}, nil
 	}
 	return service.importMarkdown(context.Background(), selected)
+}
+
+func (service *ProfileService) resolveEvidenceConflict(
+	ctx context.Context,
+	evidenceID string,
+) (ProfileOverview, error) {
+	evidenceID = strings.TrimSpace(evidenceID)
+	if evidenceID == "" {
+		return ProfileOverview{}, errors.New("Evidence id is empty")
+	}
+
+	profile, err := resolveActiveProfile(
+		ctx,
+		service.repository,
+		service.clock.Now(),
+	)
+	if err != nil {
+		return ProfileOverview{}, err
+	}
+	evidence, err := service.repository.ListEvidence(ctx, profile.ID)
+	if err != nil {
+		return ProfileOverview{}, err
+	}
+	var selected bool
+	for _, item := range evidence {
+		if item.ID == evidenceID {
+			selected = true
+			break
+		}
+	}
+	if !selected {
+		return ProfileOverview{}, fmt.Errorf(
+			"evidence %q not found in active profile",
+			evidenceID,
+		)
+	}
+
+	conflictIDs := analyzeEvidenceRelations(evidence).conflictIDs[evidenceID]
+	if len(conflictIDs) == 0 {
+		return ProfileOverview{}, fmt.Errorf(
+			"evidence %q has no conflicting versions",
+			evidenceID,
+		)
+	}
+	if err := service.repository.ResolveEvidenceConflict(
+		ctx,
+		profile.ID,
+		evidenceID,
+		conflictIDs,
+		service.clock.Now().UTC(),
+	); err != nil {
+		return ProfileOverview{}, err
+	}
+	slog.Info(
+		"evidence.conflict.resolved",
+		slog.String("profile_id", profile.ID),
+		slog.String("evidence_id", evidenceID),
+		slog.Int("excluded_count", len(conflictIDs)),
+	)
+	return service.getOverview(ctx)
 }
 
 func (service *ProfileService) saveEvidence(

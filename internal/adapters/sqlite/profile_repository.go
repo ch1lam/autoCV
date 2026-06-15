@@ -456,6 +456,70 @@ func (repository *ProfileRepository) UpdateEvidence(
 	return nil
 }
 
+func (repository *ProfileRepository) ResolveEvidenceConflict(
+	ctx context.Context,
+	profileID string,
+	evidenceID string,
+	conflictIDs []string,
+	updatedAt time.Time,
+) error {
+	tx, err := repository.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin resolve evidence conflict transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(
+		ctx,
+		`UPDATE evidence
+		    SET user_verified = 1,
+		        updated_at = ?
+		  WHERE id = ?
+		    AND profile_id = ?`,
+		formatTime(updatedAt),
+		evidenceID,
+		profileID,
+	)
+	if err != nil {
+		return fmt.Errorf("select evidence conflict version: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read selected evidence conflict result: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf(
+			"evidence %q not found in active profile",
+			evidenceID,
+		)
+	}
+
+	for _, conflictID := range conflictIDs {
+		if _, err := tx.ExecContext(
+			ctx,
+			`UPDATE evidence
+			    SET user_verified = 0,
+			        updated_at = ?
+			  WHERE id = ?
+			    AND profile_id = ?`,
+			formatTime(updatedAt),
+			conflictID,
+			profileID,
+		); err != nil {
+			return fmt.Errorf(
+				"clear conflicting evidence %q: %w",
+				conflictID,
+				err,
+			)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit evidence conflict resolution: %w", err)
+	}
+	return nil
+}
+
 func (repository *ProfileRepository) profileByID(
 	ctx context.Context,
 	id string,

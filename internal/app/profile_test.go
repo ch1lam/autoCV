@@ -257,13 +257,14 @@ func TestProfileServiceKeepsConfirmedEvidenceWhenNewSourceConflicts(t *testing.T
 	if err != nil {
 		t.Fatalf("get overview: %v", err)
 	}
-	confirmed, err := service.SaveEvidence(SaveEvidenceInput{
-		EvidenceID:   overview.Evidence[0].ID,
+	confirmedID := overview.Evidence[0].ID
+	confirmedContent := "负责支付平台接口交付并改善稳定性。"
+	if _, err := service.SaveEvidence(SaveEvidenceInput{
+		EvidenceID:   confirmedID,
 		Title:        "支付平台职责",
-		Content:      "负责支付平台接口交付并改善稳定性。",
+		Content:      confirmedContent,
 		UserVerified: true,
-	})
-	if err != nil {
+	}); err != nil {
 		t.Fatalf("confirm evidence: %v", err)
 	}
 
@@ -288,12 +289,62 @@ func TestProfileServiceKeepsConfirmedEvidenceWhenNewSourceConflicts(t *testing.T
 	if err != nil {
 		t.Fatalf("get conflicted overview: %v", err)
 	}
+	confirmedEvidence := findEvidenceSummary(t, overview.Evidence, confirmedID)
 	if len(overview.Evidence) != 2 ||
-		overview.Evidence[0].Content != confirmed.Evidence[0].Content ||
-		!overview.Evidence[0].UserVerified ||
-		len(overview.Evidence[0].ConflictEvidenceIDs) != 1 ||
-		len(overview.Evidence[1].ConflictEvidenceIDs) != 1 {
+		confirmedEvidence.Content != confirmedContent ||
+		!confirmedEvidence.UserVerified ||
+		len(confirmedEvidence.ConflictEvidenceIDs) != 1 {
 		t.Fatalf("expected confirmed evidence to remain intact, got %#v", overview.Evidence)
+	}
+	conflictingID := confirmedEvidence.ConflictEvidenceIDs[0]
+	conflictingEvidence := findEvidenceSummary(t, overview.Evidence, conflictingID)
+	if len(conflictingEvidence.ConflictEvidenceIDs) != 1 {
+		t.Fatalf("expected reciprocal conflict, got %#v", conflictingEvidence)
+	}
+
+	service.clock = fixedClock{now: profileTestTime.Add(2 * time.Hour)}
+	resolved, err := service.ResolveEvidenceConflict(conflictingID)
+	if err != nil {
+		t.Fatalf("resolve evidence conflict: %v", err)
+	}
+	resolvedConfirmed := findEvidenceSummary(t, resolved.Evidence, confirmedID)
+	resolvedConflict := findEvidenceSummary(t, resolved.Evidence, conflictingID)
+	if resolvedConfirmed.UserVerified ||
+		!resolvedConflict.UserVerified ||
+		resolvedConflict.UpdatedAt !=
+			profileTestTime.Add(2*time.Hour).Format(time.RFC3339) {
+		t.Fatalf("expected selected conflict version only, got %#v", resolved.Evidence)
+	}
+
+	switched, err := service.ResolveEvidenceConflict(confirmedID)
+	if err != nil {
+		t.Fatalf("switch evidence conflict version: %v", err)
+	}
+	switchedConfirmed := findEvidenceSummary(t, switched.Evidence, confirmedID)
+	switchedConflict := findEvidenceSummary(t, switched.Evidence, conflictingID)
+	if !switchedConfirmed.UserVerified ||
+		switchedConflict.UserVerified {
+		t.Fatalf("expected conflict selection to switch, got %#v", switched.Evidence)
+	}
+}
+
+func TestProfileServiceRejectsInvalidEvidenceConflictResolution(t *testing.T) {
+	service, _, _, _, _ := newProfileServiceTest(t)
+	if _, err := service.ResolveEvidenceConflict(" "); err == nil {
+		t.Fatal("expected blank evidence id error")
+	}
+	if _, err := service.ImportMarkdown(); err != nil {
+		t.Fatalf("import Markdown: %v", err)
+	}
+	overview, err := service.GetOverview()
+	if err != nil {
+		t.Fatalf("get overview: %v", err)
+	}
+	if _, err := service.ResolveEvidenceConflict(overview.Evidence[0].ID); err == nil {
+		t.Fatal("expected non-conflicting evidence error")
+	}
+	if _, err := service.ResolveEvidenceConflict("missing-evidence"); err == nil {
+		t.Fatal("expected missing evidence error")
 	}
 }
 
@@ -571,6 +622,21 @@ func newProfileServiceTest(t *testing.T) (
 		fixedClock{now: profileTestTime},
 	)
 	return service, repository, files, contents, root
+}
+
+func findEvidenceSummary(
+	t *testing.T,
+	items []EvidenceSummary,
+	evidenceID string,
+) EvidenceSummary {
+	t.Helper()
+	for _, item := range items {
+		if item.ID == evidenceID {
+			return item
+		}
+	}
+	t.Fatalf("evidence %q not found in %#v", evidenceID, items)
+	return EvidenceSummary{}
 }
 
 var _ ports.Clock = fixedClock{}

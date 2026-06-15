@@ -42,4 +42,11 @@ type ProfileRepository interface {
 		bool,
 		time.Time,
 	) error
+	ResolveEvidenceConflict(
+		context.Context,
+		string,
+		string,
+		[]string,
+		time.Time,
+	) error
 }
