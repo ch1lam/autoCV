@@ -2,6 +2,7 @@ import {
     IconArchive,
     IconCheck,
     IconChevronDown,
+    IconDownload,
     IconEdit,
     IconFileDescription,
     IconFileText,
@@ -176,6 +177,7 @@ function App() {
     useState<ProfileSearchStatus>("idle");
   const [profileSearchError, setProfileSearchError] = useState("");
   const [isImportingProfile, setIsImportingProfile] = useState(false);
+  const [isExportingProfile, setIsExportingProfile] = useState(false);
   const [isSavingProfileEvidence, setIsSavingProfileEvidence] =
     useState(false);
   const [jdWorkspace, setJDWorkspace] =
@@ -491,6 +493,30 @@ function App() {
       });
     } finally {
       setIsImportingProfile(false);
+    }
+  };
+
+  const handleProfileExport = async () => {
+    setIsExportingProfile(true);
+    setProfileFeedback(null);
+    try {
+      const result = await ProfileService.ExportProfile();
+      setProfileFeedback({
+        tone: result.cancelled ? "info" : "success",
+        text: result.cancelled
+          ? "已取消导出，资料库没有发生变化。"
+          : `Profile JSON 已导出到 ${result.path}`,
+      });
+    } catch (error) {
+      setProfileFeedback({
+        tone: "error",
+        text:
+          error instanceof Error
+            ? `导出失败：${error.message}`
+            : "导出失败，请重试。",
+      });
+    } finally {
+      setIsExportingProfile(false);
     }
   };
 
@@ -1150,7 +1176,8 @@ function App() {
               {(activeNav === "匹配审阅" &&
                 (isAnalyzingMatch || matchStatus === "loading")) ||
               (activeNav === "JD 工作区" && isAnalyzingJD) ||
-              (activeNav === "资料库" && profileStatus === "loading") ||
+              (activeNav === "资料库" &&
+                (profileStatus === "loading" || isExportingProfile)) ||
               (activeNav === "简历工作室" &&
                 (resumeStatus === "loading" ||
                   isGeneratingResume ||
@@ -1176,7 +1203,11 @@ function App() {
               {activeNav === "资料库" ? (
                 <>
                   <strong>
-                    {profileStatus === "loading" ? "读取资料" : "资料已同步"}
+                    {profileStatus === "loading"
+                      ? "读取资料"
+                      : isExportingProfile
+                        ? "导出中"
+                        : "资料已同步"}
                   </strong>
                   <small>
                     {profileStatus === "loading"
@@ -1315,8 +1346,22 @@ function App() {
                   </button>
                 )}
                 <button
+                  className="button button--secondary"
+                  disabled={
+                    profileStatus === "loading" ||
+                    isImportingProfile ||
+                    isExportingProfile ||
+                    !profileOverview
+                  }
+                  onClick={() => void handleProfileExport()}
+                  type="button"
+                >
+                  <IconDownload aria-hidden="true" size={18} stroke={1.65} />
+                  {isExportingProfile ? "正在导出" : "导出 Profile"}
+                </button>
+                <button
                   className="button button--primary"
-                  disabled={isImportingProfile}
+                  disabled={isImportingProfile || isExportingProfile}
                   onClick={() => requestProviderAction("profile")}
                   type="button"
                 >

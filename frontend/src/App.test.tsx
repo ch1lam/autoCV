@@ -11,6 +11,7 @@ const {
   createProfileMock,
   exportMarkdownMock,
   exportPDFMock,
+  exportProfileMock,
   getPDFWorkspaceMock,
   getJDWorkspaceMock,
   getMatchReviewMock,
@@ -36,6 +37,7 @@ const {
   createProfileMock: vi.fn(),
   exportMarkdownMock: vi.fn(),
   exportPDFMock: vi.fn(),
+  exportProfileMock: vi.fn(),
   generateResumeMock: vi.fn(),
   getJDWorkspaceMock: vi.fn(),
   getMatchReviewMock: vi.fn(),
@@ -78,6 +80,7 @@ vi.mock("../bindings/github.com/ch1lam/autocv/internal/app", () => ({
   },
   ProfileService: {
     CreateProfile: createProfileMock,
+    ExportProfile: exportProfileMock,
     GetOverview: getOverviewMock,
     ImportMarkdown: importMarkdownMock,
     ResolveEvidenceConflict: resolveEvidenceConflictMock,
@@ -561,6 +564,11 @@ describe("Paper Trail match review", () => {
       kind: "markdown",
       path: "/tmp/AutoCV-resume.md",
     });
+    exportProfileMock.mockReset().mockResolvedValue({
+      cancelled: false,
+      kind: "profile",
+      path: "/tmp/profile.json",
+    });
     saveJDDraftMock.mockReset().mockResolvedValue({
       ...jdWorkspace,
       analysisStatus: "pending",
@@ -915,6 +923,22 @@ describe("Paper Trail match review", () => {
       await screen.findByText(
         "已导入 backend-profile.md，生成 1 条可追溯 Evidence。",
       ),
+    ).toBeInTheDocument();
+  });
+
+  it("exports the active Profile as JSON", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "资料库" }));
+    await within(screen.getByRole("main")).findByText("backend-profile.md");
+    await user.click(
+      screen.getByRole("button", { name: "导出 Profile" }),
+    );
+
+    expect(exportProfileMock).toHaveBeenCalledOnce();
+    expect(
+      await screen.findByText("Profile JSON 已导出到 /tmp/profile.json"),
     ).toBeInTheDocument();
   });
 
