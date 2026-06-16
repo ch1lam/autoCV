@@ -8,22 +8,27 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/ch1lam/autocv/internal/domain"
 	"github.com/ch1lam/autocv/internal/ports"
+	"github.com/ch1lam/autocv/internal/workflow"
 	"github.com/google/uuid"
 )
 
 const defaultMatchAnalysisErr = "match analysis failed"
 
 type MatchService struct {
-	matchRepository   ports.MatchRepository
-	scopeRepository   ports.RunScopeRepository
-	profileRepository ports.ProfileRepository
-	jdRepository      ports.JDRepository
-	suggester         ports.MatchSuggester
-	clock             ports.Clock
+	matchRepository         ports.MatchRepository
+	scopeRepository         ports.RunScopeRepository
+	runRepository           ports.ResumeRunRepository
+	clarificationRepository ports.ClarificationRepository
+	profileRepository       ports.ProfileRepository
+	jdRepository            ports.JDRepository
+	suggester               ports.MatchSuggester
+	clock                   ports.Clock
 }
 
 type MatchReview struct {
@@ -38,6 +43,7 @@ type MatchReview struct {
 	Counts         MatchCounts               `json:"counts"`
 	Dimensions     []MatchDimensionSummary   `json:"dimensions"`
 	Requirements   []RequirementMatchSummary `json:"requirements"`
+	Clarifications []ClarificationSummary    `json:"clarifications"`
 	Scope          RunScopeSummary           `json:"scope"`
 }
 
@@ -102,6 +108,17 @@ type MatchEvidenceSourceSummary struct {
 	QuoteEnd     int    `json:"quoteEnd"`
 }
 
+type ClarificationSummary struct {
+	ID            string `json:"id"`
+	RequirementID string `json:"requirementId"`
+	Round         int    `json:"round"`
+	Ordinal       int    `json:"ordinal"`
+	Question      string `json:"question"`
+	Reason        string `json:"reason"`
+	Status        string `json:"status"`
+	Answer        string `json:"answer"`
+}
+
 type preparedMatchInput struct {
 	profile      domain.Profile
 	jd           domain.JobDescription
@@ -114,18 +131,22 @@ type preparedMatchInput struct {
 func NewMatchService(
 	matchRepository ports.MatchRepository,
 	scopeRepository ports.RunScopeRepository,
+	runRepository ports.ResumeRunRepository,
+	clarificationRepository ports.ClarificationRepository,
 	profileRepository ports.ProfileRepository,
 	jdRepository ports.JDRepository,
 	suggester ports.MatchSuggester,
 	clock ports.Clock,
 ) *MatchService {
 	return &MatchService{
-		matchRepository:   matchRepository,
-		scopeRepository:   scopeRepository,
-		profileRepository: profileRepository,
-		jdRepository:      jdRepository,
-		suggester:         suggester,
-		clock:             clock,
+		matchRepository:         matchRepository,
+		scopeRepository:         scopeRepository,
+		runRepository:           runRepository,
+		clarificationRepository: clarificationRepository,
+		profileRepository:       profileRepository,
+		jdRepository:            jdRepository,
+		suggester:               suggester,
+		clock:                   clock,
 	}
 }
 
@@ -238,15 +259,22 @@ func (service *MatchService) Analyze() (MatchReview, error) {
 	if err := service.matchRepository.Save(ctx, analysis); err != nil {
 		return MatchReview{}, err
 	}
+	questions, err := service.saveClarificationRound(ctx, input, analysis, now)
+	if err != nil {
+		return MatchReview{}, err
+	}
 
 	slog.Info(
 		"match.analysis.succeeded",
 		slog.String("analysis_id", analysis.ID),
 		slog.String("input_hash", analysis.InputHash),
 		slog.Int("requirement_count", len(analysis.Requirements)),
+		slog.Int("clarification_count", len(questions)),
 		slog.Int("score", score.Total),
 	)
-	return matchReviewFromAnalysis(analysis, input, score), nil
+	review := matchReviewFromAnalysis(analysis, input, score)
+	review.Clarifications = clarificationSummaries(questions)
+	return review, nil
 }
 
 func (service *MatchService) getReview(
@@ -310,7 +338,16 @@ func (service *MatchService) getReview(
 	if err != nil {
 		return MatchReview{}, err
 	}
-	return matchReviewFromAnalysis(analysis, input, score), nil
+	review := matchReviewFromAnalysis(analysis, input, score)
+	questions, err := service.clarificationRepository.ListQuestions(
+		ctx,
+		resumeRunID(input.profile.ID, input.jd.ID),
+	)
+	if err != nil {
+		return MatchReview{}, err
+	}
+	review.Clarifications = clarificationSummaries(questions)
+	return review, nil
 }
 
 func (service *MatchService) prepareInput(
@@ -437,6 +474,156 @@ func (service *MatchService) saveFailure(
 			slog.Any("error", err),
 		)
 	}
+}
+
+func (service *MatchService) saveClarificationRound(
+	ctx context.Context,
+	input preparedMatchInput,
+	analysis domain.MatchAnalysis,
+	now time.Time,
+) ([]domain.ClarificationQuestion, error) {
+	runID := resumeRunID(input.profile.ID, input.jd.ID)
+	questions := buildClarificationQuestions(runID, analysis, now)
+	stage := workflow.StageMatched
+	if len(questions) > 0 {
+		stage = workflow.StageRequiresUserInput
+	}
+	resumeLanguage := domain.ResumeLanguageChinese
+	if input.jd.Language == string(domain.JDLanguageEnglish) {
+		resumeLanguage = domain.ResumeLanguageEnglish
+	}
+	if err := service.runRepository.SaveRun(ctx, domain.ResumeRun{
+		ID:             runID,
+		ProfileID:      input.profile.ID,
+		JDID:           input.jd.ID,
+		Status:         "active",
+		Stage:          string(stage),
+		PackagingLevel: 0.5,
+		Language:       resumeLanguage,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}); err != nil {
+		return nil, err
+	}
+	if err := service.clarificationRepository.ReplaceRoundQuestions(
+		ctx,
+		runID,
+		1,
+		questions,
+	); err != nil {
+		return nil, err
+	}
+	return questions, nil
+}
+
+type clarificationCandidate struct {
+	requirement domain.MatchRequirement
+	suggestion  domain.MatchSuggestion
+}
+
+func buildClarificationQuestions(
+	runID string,
+	analysis domain.MatchAnalysis,
+	now time.Time,
+) []domain.ClarificationQuestion {
+	requirementsByID := make(
+		map[string]domain.MatchRequirement,
+		len(analysis.Requirements),
+	)
+	for _, requirement := range analysis.Requirements {
+		requirementsByID[requirement.ID] = requirement
+	}
+
+	candidates := make([]clarificationCandidate, 0)
+	for _, suggestion := range analysis.Suggestions {
+		if !suggestion.ClarificationNeeded {
+			continue
+		}
+		requirement, exists := requirementsByID[suggestion.RequirementID]
+		if !exists {
+			continue
+		}
+		candidates = append(candidates, clarificationCandidate{
+			requirement: requirement,
+			suggestion:  suggestion,
+		})
+	}
+	sort.SliceStable(candidates, func(left, right int) bool {
+		leftRequirement := candidates[left].requirement
+		rightRequirement := candidates[right].requirement
+		if leftRequirement.HardConstraint != rightRequirement.HardConstraint {
+			return leftRequirement.HardConstraint
+		}
+		if leftRequirement.Importance != rightRequirement.Importance {
+			return leftRequirement.Importance > rightRequirement.Importance
+		}
+		return leftRequirement.Ordinal < rightRequirement.Ordinal
+	})
+	if len(candidates) > domain.MaxClarificationQuestionsPerRound {
+		candidates = candidates[:domain.MaxClarificationQuestionsPerRound]
+	}
+
+	questions := make([]domain.ClarificationQuestion, 0, len(candidates))
+	for ordinal, candidate := range candidates {
+		questions = append(questions, domain.ClarificationQuestion{
+			ID:            clarificationQuestionID(runID, 1, candidate.requirement.ID),
+			RunID:         runID,
+			RequirementID: candidate.requirement.ID,
+			Round:         1,
+			Ordinal:       ordinal,
+			Question: clarificationQuestionText(
+				candidate.requirement,
+				candidate.suggestion,
+			),
+			Reason: clarificationReasonText(
+				candidate.requirement,
+				candidate.suggestion,
+			),
+			Status:    domain.ClarificationPending,
+			CreatedAt: now,
+			UpdatedAt: now,
+		})
+	}
+	return questions
+}
+
+func clarificationQuestionText(
+	requirement domain.MatchRequirement,
+	suggestion domain.MatchSuggestion,
+) string {
+	switch suggestion.Strength {
+	case domain.MatchStrengthPartial:
+		return fmt.Sprintf(
+			"关于“%s”，请补充具体职责范围、技术细节、规模或结果。",
+			requirement.Text,
+		)
+	case domain.MatchStrengthMissing, domain.MatchStrengthUnknown:
+		return fmt.Sprintf(
+			"请确认你是否具备“%s”相关经历；如果有，请补充可验证的职责、项目或结果。",
+			requirement.Text,
+		)
+	default:
+		return fmt.Sprintf(
+			"关于“%s”，还有哪些可验证信息需要补充？",
+			requirement.Text,
+		)
+	}
+}
+
+func clarificationReasonText(
+	requirement domain.MatchRequirement,
+	suggestion domain.MatchSuggestion,
+) string {
+	prefix := "该要求会影响简历表达强度"
+	if requirement.HardConstraint {
+		prefix = "该要求是 JD 硬性条件"
+	}
+	return fmt.Sprintf(
+		"%s，当前匹配为%s；%s",
+		prefix,
+		matchStrengthLabel(suggestion.Strength),
+		suggestion.Explanation,
+	)
 }
 
 func buildMatchRequirements(
@@ -584,6 +771,7 @@ func matchReviewFromAnalysis(
 		UpdatedAt:      analysis.UpdatedAt.UTC().Format(timeFormat),
 		Dimensions:     make([]MatchDimensionSummary, 0, len(score.Dimensions)),
 		Requirements:   make([]RequirementMatchSummary, 0, len(analysis.Requirements)),
+		Clarifications: make([]ClarificationSummary, 0),
 		Scope:          input.scope,
 	}
 	for _, dimension := range score.Dimensions {
@@ -660,6 +848,25 @@ func matchEvidenceSummary(item domain.Evidence) MatchEvidenceSummary {
 	return summary
 }
 
+func clarificationSummaries(
+	questions []domain.ClarificationQuestion,
+) []ClarificationSummary {
+	summaries := make([]ClarificationSummary, 0, len(questions))
+	for _, question := range questions {
+		summaries = append(summaries, ClarificationSummary{
+			ID:            question.ID,
+			RequirementID: question.RequirementID,
+			Round:         question.Round,
+			Ordinal:       question.Ordinal,
+			Question:      question.Question,
+			Reason:        question.Reason,
+			Status:        string(question.Status),
+			Answer:        question.Answer,
+		})
+	}
+	return summaries
+}
+
 func emptyMatchReview(
 	status string,
 	jd domain.JobDescription,
@@ -672,7 +879,11 @@ func emptyMatchReview(
 		Company:      jd.Company,
 		Dimensions:   make([]MatchDimensionSummary, 0),
 		Requirements: make([]RequirementMatchSummary, 0),
-		Scope:        emptyRunScopeSummary(),
+		Clarifications: make(
+			[]ClarificationSummary,
+			0,
+		),
+		Scope: emptyRunScopeSummary(),
 	}
 }
 
@@ -731,6 +942,21 @@ func matchCategoryLabel(category domain.RequirementCategory) string {
 	}
 }
 
+func matchStrengthLabel(strength domain.MatchStrength) string {
+	switch strength {
+	case domain.MatchStrengthStrong:
+		return "强匹配"
+	case domain.MatchStrengthPartial:
+		return "部分匹配"
+	case domain.MatchStrengthMissing:
+		return "缺失"
+	case domain.MatchStrengthUnknown:
+		return "未知"
+	default:
+		return string(strength)
+	}
+}
+
 func derivedRequirementID(kind string, value string) string {
 	return "derived-" + kind + "-" + uuid.NewSHA1(
 		uuid.NameSpaceURL,
@@ -742,5 +968,21 @@ func matchAnalysisID(profileID string, jdID string) string {
 	return uuid.NewSHA1(
 		uuid.NameSpaceURL,
 		[]byte("https://autocv.local/matches/"+profileID+"/"+jdID),
+	).String()
+}
+
+func clarificationQuestionID(
+	runID string,
+	round int,
+	requirementID string,
+) string {
+	return uuid.NewSHA1(
+		uuid.NameSpaceURL,
+		[]byte(fmt.Sprintf(
+			"https://autocv.local/clarifications/%s/%d/%s",
+			runID,
+			round,
+			requirementID,
+		)),
 	).String()
 }

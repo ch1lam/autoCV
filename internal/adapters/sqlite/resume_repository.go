@@ -204,6 +204,25 @@ func (repository *ResumeRepository) GetLatest(
 	return run, resume, found, nil
 }
 
+func (repository *ResumeRepository) SaveRun(
+	ctx context.Context,
+	run domain.ResumeRun,
+) error {
+	tx, err := repository.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin resume run transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	if err := saveResumeRun(ctx, tx, run); err != nil {
+		return fmt.Errorf("save resume run: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit resume run: %w", err)
+	}
+	return nil
+}
+
 func (repository *ResumeRepository) SaveVersion(
 	ctx context.Context,
 	run domain.ResumeRun,
@@ -225,28 +244,7 @@ func (repository *ResumeRepository) SaveVersion(
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.ExecContext(
-		ctx,
-		`INSERT INTO resume_runs(
-			id, profile_id, jd_id, status, stage, packaging_level,
-			language, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			status = excluded.status,
-			stage = excluded.stage,
-			packaging_level = excluded.packaging_level,
-			language = excluded.language,
-			updated_at = excluded.updated_at`,
-		run.ID,
-		run.ProfileID,
-		run.JDID,
-		run.Status,
-		run.Stage,
-		run.PackagingLevel,
-		run.Language,
-		formatTime(run.CreatedAt),
-		formatTime(run.UpdatedAt),
-	); err != nil {
+	if err := saveResumeRun(ctx, tx, run); err != nil {
 		return fmt.Errorf("save resume run: %w", err)
 	}
 
@@ -307,6 +305,36 @@ func (repository *ResumeRepository) SaveVersion(
 		return fmt.Errorf("commit resume version: %w", err)
 	}
 	return nil
+}
+
+func saveResumeRun(
+	ctx context.Context,
+	tx *sql.Tx,
+	run domain.ResumeRun,
+) error {
+	_, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO resume_runs(
+			id, profile_id, jd_id, status, stage, packaging_level,
+			language, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			status = excluded.status,
+			stage = excluded.stage,
+			packaging_level = excluded.packaging_level,
+			language = excluded.language,
+			updated_at = excluded.updated_at`,
+		run.ID,
+		run.ProfileID,
+		run.JDID,
+		run.Status,
+		run.Stage,
+		run.PackagingLevel,
+		run.Language,
+		formatTime(run.CreatedAt),
+		formatTime(run.UpdatedAt),
+	)
+	return err
 }
 
 func (repository *ResumeRepository) getLatestResume(

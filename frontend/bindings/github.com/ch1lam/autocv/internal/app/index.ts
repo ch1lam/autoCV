@@ -21,6 +21,7 @@ export {
 };
 
 export {
+    ClarificationSummary,
     EvidenceSourceSummary,
     EvidenceSummary,
     ExportResult,

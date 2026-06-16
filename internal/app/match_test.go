@@ -58,6 +58,22 @@ func TestMatchServiceAnalyzesScoresAndRestoresReview(t *testing.T) {
 	if review.Counts.Strong == 0 || review.Counts.Missing == 0 {
 		t.Fatalf("expected mixed match strengths, got %#v", review.Counts)
 	}
+	if len(review.Clarifications) == 0 ||
+		len(review.Clarifications) > domain.MaxClarificationQuestionsPerRound {
+		t.Fatalf("expected bounded clarification questions, got %#v", review.Clarifications)
+	}
+	if review.Clarifications[0].Status != string(domain.ClarificationPending) {
+		t.Fatalf("expected pending clarification, got %#v", review.Clarifications[0])
+	}
+	var runStage string
+	if err := fixture.db.QueryRow(
+		"SELECT stage FROM resume_runs LIMIT 1",
+	).Scan(&runStage); err != nil {
+		t.Fatalf("read clarification run stage: %v", err)
+	}
+	if runStage != "requires_user_input" {
+		t.Fatalf("expected run to require user input, got %q", runStage)
+	}
 
 	var foundTraceableEvidence bool
 	for _, requirement := range review.Requirements {
@@ -75,6 +91,8 @@ func TestMatchServiceAnalyzesScoresAndRestoresReview(t *testing.T) {
 	restarted := NewMatchService(
 		fixture.matchRepository,
 		fixture.scopeRepository,
+		fixture.scopeRepository,
+		fixture.clarificationRepository,
 		fixture.profileRepository,
 		fixture.jdRepository,
 		fakeprovider.New(),
@@ -86,8 +104,62 @@ func TestMatchServiceAnalyzesScoresAndRestoresReview(t *testing.T) {
 	}
 	if restored.Status != "ready" ||
 		restored.TotalScore != review.TotalScore ||
-		len(restored.Requirements) != len(review.Requirements) {
+		len(restored.Requirements) != len(review.Requirements) ||
+		len(restored.Clarifications) != len(review.Clarifications) {
 		t.Fatalf("unexpected restored review %#v", restored)
+	}
+}
+
+func TestBuildClarificationQuestionsCapsAndPrioritizesRequirements(t *testing.T) {
+	now := time.Date(2026, 6, 16, 10, 0, 0, 0, time.UTC)
+	analysis := domain.MatchAnalysis{
+		Requirements: []domain.MatchRequirement{
+			matchRequirementFixture("low-1", domain.RequirementCategoryPreferred, 1, false),
+			matchRequirementFixture("mid-1", domain.RequirementCategoryResponsibility, 3, false),
+			matchRequirementFixture("hard-1", domain.RequirementCategoryRequired, 2, true),
+			matchRequirementFixture("high-1", domain.RequirementCategoryRequired, 5, false),
+			matchRequirementFixture("mid-2", domain.RequirementCategoryDomain, 3, false),
+			matchRequirementFixture("low-2", domain.RequirementCategoryPreferred, 1, false),
+		},
+	}
+	for index := range analysis.Requirements {
+		analysis.Requirements[index].Ordinal = index
+		analysis.Suggestions = append(analysis.Suggestions, domain.MatchSuggestion{
+			RequirementID:       analysis.Requirements[index].ID,
+			Strength:            domain.MatchStrengthMissing,
+			Explanation:         "缺少直接证据。",
+			ClarificationNeeded: true,
+		})
+	}
+
+	questions := buildClarificationQuestions("run-1", analysis, now)
+	if len(questions) != domain.MaxClarificationQuestionsPerRound {
+		t.Fatalf("expected max 5 questions, got %#v", questions)
+	}
+	if questions[0].RequirementID != "hard-1" ||
+		questions[1].RequirementID != "high-1" {
+		t.Fatalf("unexpected question priority %#v", questions)
+	}
+	for ordinal, question := range questions {
+		if question.Ordinal != ordinal ||
+			question.Status != domain.ClarificationPending {
+			t.Fatalf("unexpected generated question %#v", question)
+		}
+	}
+}
+
+func matchRequirementFixture(
+	id string,
+	category domain.RequirementCategory,
+	importance int,
+	hardConstraint bool,
+) domain.MatchRequirement {
+	return domain.MatchRequirement{
+		ID:             id,
+		Category:       category,
+		Text:           id,
+		Importance:     importance,
+		HardConstraint: hardConstraint,
 	}
 }
 
@@ -306,16 +378,17 @@ func TestMatchServiceAppliesSelectedRunDocuments(t *testing.T) {
 }
 
 type matchServiceFixture struct {
-	db                *sql.DB
-	files             *filesystem.ManagedFiles
-	service           *MatchService
-	profileRepository *sqliteadapter.ProfileRepository
-	jdRepository      *sqliteadapter.JDRepository
-	matchRepository   *sqliteadapter.MatchRepository
-	scopeRepository   *sqliteadapter.ResumeRepository
-	profileService    *ProfileService
-	jdService         *JDService
-	jdText            string
+	db                      *sql.DB
+	files                   *filesystem.ManagedFiles
+	service                 *MatchService
+	profileRepository       *sqliteadapter.ProfileRepository
+	jdRepository            *sqliteadapter.JDRepository
+	matchRepository         *sqliteadapter.MatchRepository
+	scopeRepository         *sqliteadapter.ResumeRepository
+	clarificationRepository *sqliteadapter.ClarificationRepository
+	profileService          *ProfileService
+	jdService               *JDService
+	jdText                  string
 }
 
 func newMatchServiceFixture(
@@ -379,6 +452,7 @@ func newMatchServiceFixtureFromFiles(
 	jdRepository := sqliteadapter.NewJDRepository(db)
 	matchRepository := sqliteadapter.NewMatchRepository(db)
 	scopeRepository := sqliteadapter.NewResumeRepository(db)
+	clarificationRepository := sqliteadapter.NewClarificationRepository(db)
 	provider := fakeprovider.New()
 	profileService := NewProfileService(
 		profileRepository,
@@ -407,18 +481,21 @@ func newMatchServiceFixtureFromFiles(
 		service: NewMatchService(
 			matchRepository,
 			scopeRepository,
+			scopeRepository,
+			clarificationRepository,
 			profileRepository,
 			jdRepository,
 			suggester,
 			fixedClock{now: profileTestTime},
 		),
-		profileRepository: profileRepository,
-		jdRepository:      jdRepository,
-		matchRepository:   matchRepository,
-		scopeRepository:   scopeRepository,
-		profileService:    profileService,
-		jdService:         jdService,
-		jdText:            string(jdContents),
+		profileRepository:       profileRepository,
+		jdRepository:            jdRepository,
+		matchRepository:         matchRepository,
+		scopeRepository:         scopeRepository,
+		clarificationRepository: clarificationRepository,
+		profileService:          profileService,
+		jdService:               jdService,
+		jdText:                  string(jdContents),
 	}
 }
 
