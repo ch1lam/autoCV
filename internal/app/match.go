@@ -277,6 +277,29 @@ func (service *MatchService) Analyze() (MatchReview, error) {
 	return review, nil
 }
 
+func (service *MatchService) AnswerClarification(
+	questionID string,
+	answer string,
+) (MatchReview, error) {
+	return service.updateClarification(
+		context.Background(),
+		questionID,
+		domain.ClarificationAnswered,
+		answer,
+	)
+}
+
+func (service *MatchService) SkipClarification(
+	questionID string,
+) (MatchReview, error) {
+	return service.updateClarification(
+		context.Background(),
+		questionID,
+		domain.ClarificationSkipped,
+		"",
+	)
+}
+
 func (service *MatchService) getReview(
 	ctx context.Context,
 ) (MatchReview, error) {
@@ -348,6 +371,97 @@ func (service *MatchService) getReview(
 	}
 	review.Clarifications = clarificationSummaries(questions)
 	return review, nil
+}
+
+func (service *MatchService) updateClarification(
+	ctx context.Context,
+	questionID string,
+	status domain.ClarificationQuestionStatus,
+	answer string,
+) (MatchReview, error) {
+	input, analysis, err := service.currentReadyMatchAnalysis(ctx)
+	if err != nil {
+		return MatchReview{}, err
+	}
+	runID := resumeRunID(input.profile.ID, input.jd.ID)
+	questions, err := service.clarificationRepository.ListQuestions(ctx, runID)
+	if err != nil {
+		return MatchReview{}, err
+	}
+	var found bool
+	for _, question := range questions {
+		if question.ID != questionID {
+			continue
+		}
+		found = true
+		if question.Status != domain.ClarificationPending {
+			return MatchReview{}, fmt.Errorf(
+				"clarification question %q has already been handled",
+				questionID,
+			)
+		}
+		break
+	}
+	if !found {
+		return MatchReview{}, fmt.Errorf(
+			"clarification question %q not found in current run",
+			questionID,
+		)
+	}
+
+	now := service.clock.Now().UTC()
+	if _, err := service.clarificationRepository.UpdateQuestionStatus(
+		ctx,
+		questionID,
+		status,
+		answer,
+		now,
+	); err != nil {
+		return MatchReview{}, err
+	}
+	questions, err = service.clarificationRepository.ListQuestions(ctx, runID)
+	if err != nil {
+		return MatchReview{}, err
+	}
+	if err := service.advanceClarificationRound(
+		ctx,
+		input,
+		analysis,
+		questions,
+		now,
+	); err != nil {
+		return MatchReview{}, err
+	}
+	return service.getReview(ctx)
+}
+
+func (service *MatchService) currentReadyMatchAnalysis(
+	ctx context.Context,
+) (preparedMatchInput, domain.MatchAnalysis, error) {
+	input, blocked, err := service.prepareInput(ctx)
+	if err != nil {
+		return preparedMatchInput{}, domain.MatchAnalysis{}, err
+	}
+	if blocked.Status != "" {
+		return preparedMatchInput{}, domain.MatchAnalysis{}, errors.New(
+			blocked.Message,
+		)
+	}
+	analysis, found, err := service.matchRepository.GetLatest(
+		ctx,
+		input.profile.ID,
+		input.jd.ID,
+	)
+	if err != nil {
+		return preparedMatchInput{}, domain.MatchAnalysis{}, err
+	}
+	if !found || analysis.InputHash != input.inputHash ||
+		analysis.Status != "succeeded" {
+		return preparedMatchInput{}, domain.MatchAnalysis{}, errors.New(
+			"match analysis is not ready for clarification",
+		)
+	}
+	return input, analysis, nil
 }
 
 func (service *MatchService) prepareInput(
@@ -488,21 +602,7 @@ func (service *MatchService) saveClarificationRound(
 	if len(questions) > 0 {
 		stage = workflow.StageRequiresUserInput
 	}
-	resumeLanguage := domain.ResumeLanguageChinese
-	if input.jd.Language == string(domain.JDLanguageEnglish) {
-		resumeLanguage = domain.ResumeLanguageEnglish
-	}
-	if err := service.runRepository.SaveRun(ctx, domain.ResumeRun{
-		ID:             runID,
-		ProfileID:      input.profile.ID,
-		JDID:           input.jd.ID,
-		Status:         "active",
-		Stage:          string(stage),
-		PackagingLevel: 0.5,
-		Language:       resumeLanguage,
-		CreatedAt:      now,
-		UpdatedAt:      now,
-	}); err != nil {
+	if err := service.saveMatchRunStage(ctx, input, stage, now); err != nil {
 		return nil, err
 	}
 	if err := service.clarificationRepository.ReplaceRoundQuestions(
@@ -516,6 +616,76 @@ func (service *MatchService) saveClarificationRound(
 	return questions, nil
 }
 
+func (service *MatchService) advanceClarificationRound(
+	ctx context.Context,
+	input preparedMatchInput,
+	analysis domain.MatchAnalysis,
+	questions []domain.ClarificationQuestion,
+	now time.Time,
+) error {
+	runID := resumeRunID(input.profile.ID, input.jd.ID)
+	if hasPendingClarifications(questions) {
+		return service.saveMatchRunStage(
+			ctx,
+			input,
+			workflow.StageRequiresUserInput,
+			now,
+		)
+	}
+
+	maxRound := maxClarificationRound(questions)
+	if maxRound < domain.MaxClarificationRounds {
+		askedRequirementIDs := make(map[string]struct{}, len(questions))
+		for _, question := range questions {
+			askedRequirementIDs[question.RequirementID] = struct{}{}
+		}
+		nextRound := maxRound + 1
+		nextQuestions := buildClarificationQuestionsForRound(
+			runID,
+			analysis,
+			nextRound,
+			askedRequirementIDs,
+			now,
+		)
+		if len(nextQuestions) > 0 {
+			if err := service.saveMatchRunStage(
+				ctx,
+				input,
+				workflow.StageRequiresUserInput,
+				now,
+			); err != nil {
+				return err
+			}
+			return service.clarificationRepository.ReplaceRoundQuestions(
+				ctx,
+				runID,
+				nextRound,
+				nextQuestions,
+			)
+		}
+	}
+	return service.saveMatchRunStage(ctx, input, workflow.StageMatched, now)
+}
+
+func (service *MatchService) saveMatchRunStage(
+	ctx context.Context,
+	input preparedMatchInput,
+	stage workflow.Stage,
+	now time.Time,
+) error {
+	return service.runRepository.SaveRun(ctx, domain.ResumeRun{
+		ID:             resumeRunID(input.profile.ID, input.jd.ID),
+		ProfileID:      input.profile.ID,
+		JDID:           input.jd.ID,
+		Status:         "active",
+		Stage:          string(stage),
+		PackagingLevel: 0.5,
+		Language:       resumeLanguageFromJD(input.jd),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+}
+
 type clarificationCandidate struct {
 	requirement domain.MatchRequirement
 	suggestion  domain.MatchSuggestion
@@ -524,6 +694,22 @@ type clarificationCandidate struct {
 func buildClarificationQuestions(
 	runID string,
 	analysis domain.MatchAnalysis,
+	now time.Time,
+) []domain.ClarificationQuestion {
+	return buildClarificationQuestionsForRound(
+		runID,
+		analysis,
+		1,
+		nil,
+		now,
+	)
+}
+
+func buildClarificationQuestionsForRound(
+	runID string,
+	analysis domain.MatchAnalysis,
+	round int,
+	excludedRequirementIDs map[string]struct{},
 	now time.Time,
 ) []domain.ClarificationQuestion {
 	requirementsByID := make(
@@ -537,6 +723,9 @@ func buildClarificationQuestions(
 	candidates := make([]clarificationCandidate, 0)
 	for _, suggestion := range analysis.Suggestions {
 		if !suggestion.ClarificationNeeded {
+			continue
+		}
+		if _, excluded := excludedRequirementIDs[suggestion.RequirementID]; excluded {
 			continue
 		}
 		requirement, exists := requirementsByID[suggestion.RequirementID]
@@ -566,10 +755,10 @@ func buildClarificationQuestions(
 	questions := make([]domain.ClarificationQuestion, 0, len(candidates))
 	for ordinal, candidate := range candidates {
 		questions = append(questions, domain.ClarificationQuestion{
-			ID:            clarificationQuestionID(runID, 1, candidate.requirement.ID),
+			ID:            clarificationQuestionID(runID, round, candidate.requirement.ID),
 			RunID:         runID,
 			RequirementID: candidate.requirement.ID,
-			Round:         1,
+			Round:         round,
 			Ordinal:       ordinal,
 			Question: clarificationQuestionText(
 				candidate.requirement,
@@ -585,6 +774,36 @@ func buildClarificationQuestions(
 		})
 	}
 	return questions
+}
+
+func hasPendingClarifications(
+	questions []domain.ClarificationQuestion,
+) bool {
+	for _, question := range questions {
+		if question.Status == domain.ClarificationPending {
+			return true
+		}
+	}
+	return false
+}
+
+func maxClarificationRound(
+	questions []domain.ClarificationQuestion,
+) int {
+	var maxRound int
+	for _, question := range questions {
+		if question.Round > maxRound {
+			maxRound = question.Round
+		}
+	}
+	return maxRound
+}
+
+func resumeLanguageFromJD(jd domain.JobDescription) domain.ResumeLanguage {
+	if jd.Language == string(domain.JDLanguageEnglish) {
+		return domain.ResumeLanguageEnglish
+	}
+	return domain.ResumeLanguageChinese
 }
 
 func clarificationQuestionText(

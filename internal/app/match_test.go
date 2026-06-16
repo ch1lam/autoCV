@@ -40,6 +40,24 @@ func (failingMatchSuggester) SuggestMatches(
 	return nil, errors.New("provider unavailable")
 }
 
+type allClarificationSuggester struct{}
+
+func (allClarificationSuggester) SuggestMatches(
+	_ context.Context,
+	request ports.SuggestMatchesRequest,
+) ([]domain.MatchSuggestion, error) {
+	suggestions := make([]domain.MatchSuggestion, 0, len(request.Requirements))
+	for _, requirement := range request.Requirements {
+		suggestions = append(suggestions, domain.MatchSuggestion{
+			RequirementID:       requirement.ID,
+			Strength:            domain.MatchStrengthMissing,
+			Explanation:         "当前资料缺少直接证据。",
+			ClarificationNeeded: true,
+		})
+	}
+	return suggestions, nil
+}
+
 func TestMatchServiceAnalyzesScoresAndRestoresReview(t *testing.T) {
 	fixture := newMatchServiceFixture(t, fakeprovider.New())
 	fixture.importProfile(t)
@@ -108,6 +126,80 @@ func TestMatchServiceAnalyzesScoresAndRestoresReview(t *testing.T) {
 		len(restored.Clarifications) != len(review.Clarifications) {
 		t.Fatalf("unexpected restored review %#v", restored)
 	}
+}
+
+func TestMatchServiceAnswersSkipsAndCreatesSecondRound(t *testing.T) {
+	fixture := newMatchServiceFixture(t, allClarificationSuggester{})
+	fixture.importProfile(t)
+	fixture.analyzeJD(t, fixture.jdText)
+
+	review, err := fixture.service.Analyze()
+	if err != nil {
+		t.Fatalf("analyze matches: %v", err)
+	}
+	if len(review.Clarifications) != domain.MaxClarificationQuestionsPerRound {
+		t.Fatalf("expected first round questions, got %#v", review.Clarifications)
+	}
+	firstRound := append([]ClarificationSummary(nil), review.Clarifications...)
+	for index, question := range firstRound {
+		if index%2 == 0 {
+			review, err = fixture.service.AnswerClarification(
+				question.ID,
+				"有相关经验，但缺少可公开量化结果。",
+			)
+		} else {
+			review, err = fixture.service.SkipClarification(question.ID)
+		}
+		if err != nil {
+			t.Fatalf("handle first round question: %v", err)
+		}
+	}
+	pendingRoundTwo := pendingClarificationsInRound(review, 2)
+	if len(pendingRoundTwo) == 0 ||
+		len(review.Clarifications) > 2*domain.MaxClarificationQuestionsPerRound {
+		t.Fatalf("expected bounded second round, got %#v", review.Clarifications)
+	}
+	var runStage string
+	if err := fixture.db.QueryRow(
+		"SELECT stage FROM resume_runs LIMIT 1",
+	).Scan(&runStage); err != nil {
+		t.Fatalf("read second-round run stage: %v", err)
+	}
+	if runStage != "requires_user_input" {
+		t.Fatalf("expected run to wait for second round, got %q", runStage)
+	}
+
+	for _, question := range pendingRoundTwo {
+		review, err = fixture.service.SkipClarification(question.ID)
+		if err != nil {
+			t.Fatalf("skip second round question: %v", err)
+		}
+	}
+	if pending := pendingClarificationsInRound(review, 2); len(pending) != 0 {
+		t.Fatalf("expected all questions handled, got %#v", pending)
+	}
+	if err := fixture.db.QueryRow(
+		"SELECT stage FROM resume_runs LIMIT 1",
+	).Scan(&runStage); err != nil {
+		t.Fatalf("read completed run stage: %v", err)
+	}
+	if runStage != "matched" {
+		t.Fatalf("expected run to return to matched, got %q", runStage)
+	}
+}
+
+func pendingClarificationsInRound(
+	review MatchReview,
+	round int,
+) []ClarificationSummary {
+	pending := make([]ClarificationSummary, 0)
+	for _, question := range review.Clarifications {
+		if question.Round == round &&
+			question.Status == string(domain.ClarificationPending) {
+			pending = append(pending, question)
+		}
+	}
+	return pending
 }
 
 func TestBuildClarificationQuestionsCapsAndPrioritizesRequirements(t *testing.T) {

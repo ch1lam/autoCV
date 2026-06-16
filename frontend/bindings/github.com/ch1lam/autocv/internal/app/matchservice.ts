@@ -15,6 +15,12 @@ export function Analyze(): $CancellablePromise<$models.MatchReview> {
     });
 }
 
+export function AnswerClarification(questionID: string, answer: string): $CancellablePromise<$models.MatchReview> {
+    return $Call.ByID(2078333855, questionID, answer).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
 export function GetReview(): $CancellablePromise<$models.MatchReview> {
     return $Call.ByID(2254571489).then(($result: any) => {
         return $$createType0($result);
@@ -23,6 +29,12 @@ export function GetReview(): $CancellablePromise<$models.MatchReview> {
 
 export function SaveScope(mode: string, documentIDs: string[]): $CancellablePromise<$models.MatchReview> {
     return $Call.ByID(1256379586, mode, documentIDs).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
+export function SkipClarification(questionID: string): $CancellablePromise<$models.MatchReview> {
+    return $Call.ByID(4016722808, questionID).then(($result: any) => {
         return $$createType0($result);
     });
 }
