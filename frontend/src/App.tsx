@@ -116,6 +116,8 @@ function App() {
     useState<MatchWorkspaceStatus>("loading");
   const [matchError, setMatchError] = useState("");
   const [isAnalyzingMatch, setIsAnalyzingMatch] = useState(false);
+  const [isUpdatingClarification, setIsUpdatingClarification] =
+    useState(false);
   const [scopeOpen, setScopeOpen] = useState(false);
   const [scopeMode, setScopeMode] = useState<"all" | "selected">("all");
   const [scopeDocumentIDs, setScopeDocumentIDs] = useState<string[]>([]);
@@ -825,6 +827,52 @@ function App() {
     }
   };
 
+  const handleClarificationAnswer = async (
+    questionID: string,
+    answer: string,
+  ) => {
+    setIsUpdatingClarification(true);
+    try {
+      const review = await MatchService.AnswerClarification(
+        questionID,
+        answer,
+      );
+      setMatchReview(review);
+      setMatchStatus("ready");
+      showNotice("追问回答已保存。");
+      await refreshResume();
+      await refreshPDF();
+    } catch (error) {
+      showNotice(
+        error instanceof Error
+          ? `保存回答失败：${error.message}`
+          : "保存回答失败，请重试。",
+      );
+    } finally {
+      setIsUpdatingClarification(false);
+    }
+  };
+
+  const handleClarificationSkip = async (questionID: string) => {
+    setIsUpdatingClarification(true);
+    try {
+      const review = await MatchService.SkipClarification(questionID);
+      setMatchReview(review);
+      setMatchStatus("ready");
+      showNotice("已跳过该追问，相关表述会保持保守。");
+      await refreshResume();
+      await refreshPDF();
+    } catch (error) {
+      showNotice(
+        error instanceof Error
+          ? `跳过失败：${error.message}`
+          : "跳过失败，请重试。",
+      );
+    } finally {
+      setIsUpdatingClarification(false);
+    }
+  };
+
   const openRunScope = () => {
     const scope = matchReview?.scope;
     if (!scope) {
@@ -1174,7 +1222,9 @@ function App() {
           <div className="analysis-state" aria-live="polite">
             <span className="analysis-icon">
               {(activeNav === "匹配审阅" &&
-                (isAnalyzingMatch || matchStatus === "loading")) ||
+                (isAnalyzingMatch ||
+                  isUpdatingClarification ||
+                  matchStatus === "loading")) ||
               (activeNav === "JD 工作区" && isAnalyzingJD) ||
               (activeNav === "资料库" &&
                 (profileStatus === "loading" || isExportingProfile)) ||
@@ -1302,6 +1352,8 @@ function App() {
                   <strong>
                     {isAnalyzingMatch
                       ? "匹配中"
+                      : isUpdatingClarification
+                        ? "保存追问"
                       : matchReview?.status === "ready"
                         ? "评分完成"
                         : matchReview?.status === "stale"
@@ -1311,6 +1363,8 @@ function App() {
                   <small>
                     {isAnalyzingMatch
                       ? "正在重建 Evidence 关联"
+                      : isUpdatingClarification
+                        ? "正在更新追问状态"
                       : matchReview?.status === "ready"
                         ? `${matchReview.requirements.length} 项要求 · ${matchReview.totalScore} 分`
                         : matchReview?.message || "准备资料与 JD"}
@@ -1669,9 +1723,16 @@ function App() {
           <MatchReviewWorkspace
             error={matchError}
             isAnalyzing={isAnalyzingMatch}
+            isUpdatingClarification={isUpdatingClarification}
             onAnalyze={() => requestProviderAction("match")}
+            onAnswerClarification={(questionID, answer) =>
+              void handleClarificationAnswer(questionID, answer)
+            }
             onOpenJD={() => setActiveNav("JD 工作区")}
             onOpenProfile={() => setActiveNav("资料库")}
+            onSkipClarification={(questionID) =>
+              void handleClarificationSkip(questionID)
+            }
             review={matchReview}
             status={matchStatus}
           />

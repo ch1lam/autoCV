@@ -7,6 +7,7 @@ import App from "./App";
 const {
   analyzeMatchesMock,
   analyzeJDMock,
+  answerClarificationMock,
   cancelActiveProviderMock,
   createProfileMock,
   exportMarkdownMock,
@@ -29,10 +30,12 @@ const {
   searchProfileMock,
   selectProfileMock,
   setResumeBlockLockedMock,
+  skipClarificationMock,
   updateResumeMarkdownMock,
 } = vi.hoisted(() => ({
   analyzeMatchesMock: vi.fn(),
   analyzeJDMock: vi.fn(),
+  answerClarificationMock: vi.fn(),
   cancelActiveProviderMock: vi.fn(),
   createProfileMock: vi.fn(),
   exportMarkdownMock: vi.fn(),
@@ -55,6 +58,7 @@ const {
   searchProfileMock: vi.fn(),
   selectProfileMock: vi.fn(),
   setResumeBlockLockedMock: vi.fn(),
+  skipClarificationMock: vi.fn(),
   updateResumeMarkdownMock: vi.fn(),
 }));
 
@@ -69,8 +73,10 @@ vi.mock("../bindings/github.com/ch1lam/autocv/internal/app", () => ({
   },
   MatchService: {
     Analyze: analyzeMatchesMock,
+    AnswerClarification: answerClarificationMock,
     GetReview: getMatchReviewMock,
     SaveScope: saveRunScopeMock,
+    SkipClarification: skipClarificationMock,
   },
   PDFService: {
     ExportMarkdown: exportMarkdownMock,
@@ -398,6 +404,18 @@ const matchReview = {
       ],
     },
   ],
+  clarifications: [
+    {
+      id: "clarification-1",
+      requirementId: "screening-english",
+      round: 1,
+      ordinal: 0,
+      question: "是否能够阅读英文技术文档？",
+      reason: "该要求是 JD 硬性条件，当前匹配为缺失。",
+      status: "pending",
+      answer: "",
+    },
+  ],
 };
 
 const resumeWorkspace = {
@@ -592,6 +610,21 @@ describe("Paper Trail match review", () => {
     saveRunScopeMock.mockReset().mockResolvedValue(matchReview);
     searchProfileMock.mockReset().mockResolvedValue([]);
     selectProfileMock.mockReset();
+    answerClarificationMock.mockReset().mockResolvedValue({
+      ...matchReview,
+      clarifications: matchReview.clarifications.map((question) => ({
+        ...question,
+        status: "answered",
+        answer: "可以阅读英文技术文档。",
+      })),
+    });
+    skipClarificationMock.mockReset().mockResolvedValue({
+      ...matchReview,
+      clarifications: matchReview.clarifications.map((question) => ({
+        ...question,
+        status: "skipped",
+      })),
+    });
   });
 
   it("filters requirement rows by match status", async () => {
@@ -662,6 +695,38 @@ describe("Paper Trail match review", () => {
     expect(
       await screen.findByRole("heading", { name: "Senior Backend Engineer" }),
     ).toBeInTheDocument();
+  });
+
+  it("answers clarification questions from Match Review", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const panel = await screen.findByRole("region", { name: "必要追问" });
+    const answer = within(panel).getByRole("textbox", {
+      name: /回答：是否能够阅读英文技术文档/,
+    });
+    await user.type(answer, "可以阅读英文技术文档。");
+    await user.click(within(panel).getByRole("button", { name: "保存回答" }));
+
+    expect(answerClarificationMock).toHaveBeenCalledWith(
+      "clarification-1",
+      "可以阅读英文技术文档。",
+    );
+    expect(await screen.findByText("追问回答已保存。")).toBeInTheDocument();
+    expect(within(panel).getByText("追问已处理")).toBeInTheDocument();
+  });
+
+  it("skips clarification questions from Match Review", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(
+      within(
+        await screen.findByRole("region", { name: "必要追问" }),
+      ).getByRole("button", { name: "跳过" }),
+    );
+
+    expect(skipClarificationMock).toHaveBeenCalledWith("clarification-1");
   });
 
   it("opens and closes the resume generation confirmation", async () => {

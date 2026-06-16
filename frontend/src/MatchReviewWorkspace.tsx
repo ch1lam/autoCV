@@ -15,6 +15,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import type {
+  ClarificationSummary,
   MatchEvidenceSummary,
   MatchEvidenceSourceSummary,
   MatchReview,
@@ -29,9 +30,12 @@ type SortMode = "importance" | "status" | "evidence";
 type MatchReviewWorkspaceProps = {
   error: string;
   isAnalyzing: boolean;
+  isUpdatingClarification: boolean;
   onAnalyze: () => void;
+  onAnswerClarification: (questionID: string, answer: string) => void;
   onOpenJD: () => void;
   onOpenProfile: () => void;
+  onSkipClarification: (questionID: string) => void;
   review: MatchReview | null;
   status: MatchWorkspaceStatus;
 };
@@ -49,9 +53,12 @@ const statusMeta: Record<
 function MatchReviewWorkspace({
   error,
   isAnalyzing,
+  isUpdatingClarification,
   onAnalyze,
+  onAnswerClarification,
   onOpenJD,
   onOpenProfile,
+  onSkipClarification,
   review,
   status,
 }: MatchReviewWorkspaceProps) {
@@ -66,6 +73,9 @@ function MatchReviewWorkspace({
   const [selectedEvidenceId, setSelectedEvidenceId] = useState("");
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [copied, setCopied] = useState(false);
+  const [clarificationAnswers, setClarificationAnswers] = useState<
+    Record<string, string>
+  >({});
 
   useEffect(() => {
     if (!review || review.status !== "ready") {
@@ -263,6 +273,16 @@ function MatchReviewWorkspace({
   }
 
   const counts = review.counts;
+  const clarifications = review.clarifications ?? [];
+  const pendingClarifications = clarifications.filter(
+    (item) => item.status === "pending",
+  );
+  const handledClarifications = clarifications.filter(
+    (item) => item.status !== "pending",
+  );
+  const activeClarificationRound =
+    pendingClarifications[0]?.round ??
+    clarifications.reduce((latest, item) => Math.max(latest, item.round), 0);
   const filters: Array<{ id: Filter; label: string; count: number }> = [
     { id: "all", label: "全部", count: review.requirements.length },
     { id: "strong", label: "强匹配", count: counts.strong },
@@ -307,6 +327,16 @@ function MatchReviewWorkspace({
   ) => {
     setSelectedEvidenceId(evidence.id);
     setSelectedSourceId(source.chunkId);
+  };
+
+  const setClarificationAnswer = (
+    question: ClarificationSummary,
+    answer: string,
+  ) => {
+    setClarificationAnswers((current) => ({
+      ...current,
+      [question.id]: answer,
+    }));
   };
 
   const handleCopy = async () => {
@@ -366,6 +396,91 @@ function MatchReviewWorkspace({
             存在未满足的明确硬性条件，综合分已按产品规则限制为最高 69。
           </p>
         )}
+
+        <section className="clarification-panel" aria-label="必要追问">
+          <header>
+            <div>
+              <span className="review-kicker">Clarification</span>
+              <h2>必要追问</h2>
+            </div>
+            <strong>
+              {pendingClarifications.length > 0
+                ? `第 ${activeClarificationRound} 轮 · ${pendingClarifications.length} 个待处理`
+                : clarifications.length > 0
+                  ? "追问已处理"
+                  : "当前无需追问"}
+            </strong>
+          </header>
+
+          {pendingClarifications.length > 0 ? (
+            <div className="clarification-list">
+              {pendingClarifications.map((question) => {
+                const answer = clarificationAnswers[question.id] ?? "";
+                return (
+                  <article className="clarification-card" key={question.id}>
+                    <span>Q{question.ordinal + 1}</span>
+                    <h3>{question.question}</h3>
+                    <p>{question.reason}</p>
+                    <textarea
+                      aria-label={`回答：${question.question}`}
+                      disabled={isUpdatingClarification}
+                      onChange={(event) =>
+                        setClarificationAnswer(question, event.target.value)
+                      }
+                      placeholder="补充可验证事实；不确定可以跳过。"
+                      value={answer}
+                    />
+                    <div className="clarification-actions">
+                      <button
+                        className="button button--secondary"
+                        disabled={isUpdatingClarification}
+                        onClick={() => onSkipClarification(question.id)}
+                        type="button"
+                      >
+                        跳过
+                      </button>
+                      <button
+                        className="button button--primary"
+                        disabled={
+                          isUpdatingClarification || answer.trim() === ""
+                        }
+                        onClick={() =>
+                          onAnswerClarification(question.id, answer)
+                        }
+                        type="button"
+                      >
+                        保存回答
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="clarification-empty">
+              {clarifications.length > 0
+                ? "所有追问都已回答或跳过，可以继续生成；跳过的问题不会被补写成事实。"
+                : "当前匹配结果没有触发必要追问。"}
+            </p>
+          )}
+
+          {handledClarifications.length > 0 && (
+            <details className="clarification-history">
+              <summary>已处理 {handledClarifications.length} 个问题</summary>
+              <div>
+                {handledClarifications.map((question) => (
+                  <article key={question.id}>
+                    <strong>
+                      {question.status === "answered" ? "已回答" : "已跳过"}
+                    </strong>
+                    <span>{question.question}</span>
+                    {question.answer && <p>{question.answer}</p>}
+                  </article>
+                ))}
+              </div>
+            </details>
+          )}
+        </section>
 
         <section className="review-controls">
           <div className="filter-tabs" role="tablist" aria-label="匹配筛选">
