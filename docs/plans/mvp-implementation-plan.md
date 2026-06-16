@@ -265,7 +265,7 @@ Markdown 职业资料
 
 ### 8.1 Slice 1：追问
 
-- [ ] 增加 Clarification Question Schema 和表。
+- [x] 增加 Clarification Question Schema 和表。
 - [ ] 根据产品规则生成最多 5 个问题。
 - [ ] 支持回答、跳过和第二轮追问。
 - [ ] 把用户确认写入 Evidence 或 Run Confirmation。
