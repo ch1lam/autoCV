@@ -24,6 +24,7 @@ const {
   saveJDDraftMock,
   saveEvidenceMock,
   saveProviderMock,
+  saveRunScopeMock,
   searchProfileMock,
   selectProfileMock,
   setResumeBlockLockedMock,
@@ -48,6 +49,7 @@ const {
   saveJDDraftMock: vi.fn(),
   saveEvidenceMock: vi.fn(),
   saveProviderMock: vi.fn(),
+  saveRunScopeMock: vi.fn(),
   searchProfileMock: vi.fn(),
   selectProfileMock: vi.fn(),
   setResumeBlockLockedMock: vi.fn(),
@@ -66,6 +68,7 @@ vi.mock("../bindings/github.com/ch1lam/autocv/internal/app", () => ({
   MatchService: {
     Analyze: analyzeMatchesMock,
     GetReview: getMatchReviewMock,
+    SaveScope: saveRunScopeMock,
   },
   PDFService: {
     ExportMarkdown: exportMarkdownMock,
@@ -122,6 +125,13 @@ const profileOverview = {
       kind: "markdown",
       parseStatus: "succeeded",
       importedAt: "2026-06-11T01:00:00Z",
+    },
+    {
+      id: "document-2",
+      originalName: "project-notes.md",
+      kind: "markdown",
+      parseStatus: "succeeded",
+      importedAt: "2026-06-11T01:10:00Z",
     },
   ],
   evidence: [
@@ -209,6 +219,26 @@ const matchReview = {
     partial: 1,
     missing: 1,
     unknown: 1,
+  },
+  scope: {
+    mode: "all",
+    selectedCount: 2,
+    availableCount: 2,
+    selectedDocumentIds: [],
+    documents: [
+      {
+        id: "document-1",
+        originalName: "backend-profile.md",
+        kind: "markdown",
+        selected: true,
+      },
+      {
+        id: "document-2",
+        originalName: "project-notes.md",
+        kind: "markdown",
+        selected: true,
+      },
+    ],
   },
   dimensions: [
     {
@@ -551,6 +581,7 @@ describe("Paper Trail match review", () => {
             : providerSettings.configurationNote,
       }),
     );
+    saveRunScopeMock.mockReset().mockResolvedValue(matchReview);
     searchProfileMock.mockReset().mockResolvedValue([]);
     selectProfileMock.mockReset();
   });
@@ -651,6 +682,50 @@ describe("Paper Trail match review", () => {
     await user.click(within(dialog).getByRole("button", { name: "继续审阅" }));
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("saves a selected document scope and invalidates the old match", async () => {
+    const user = userEvent.setup();
+    saveRunScopeMock.mockResolvedValue({
+      ...matchReview,
+      status: "stale",
+      message: "资料或 JD 已变化，旧匹配结果已失效。",
+      scope: {
+        ...matchReview.scope,
+        mode: "selected",
+        selectedCount: 1,
+        selectedDocumentIds: ["document-2"],
+        documents: matchReview.scope.documents.map((document) => ({
+          ...document,
+          selected: document.id === "document-2",
+        })),
+      },
+    });
+    render(<App />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /资料范围/ }),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: "选择本次匹配使用的资料",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "仅使用所选资料" }),
+    );
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: /backend-profile\.md/ }),
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "保存资料范围" }),
+    );
+
+    expect(saveRunScopeMock).toHaveBeenCalledWith("selected", ["document-2"]);
+    expect(
+      await screen.findByText("资料范围已保存，请重新匹配后再生成简历"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "生成简历" }),
+    ).toBeDisabled();
   });
 
   it("generates a structured resume and opens Resume Studio", async () => {

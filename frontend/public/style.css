@@ -2710,6 +2710,10 @@ button:focus-visible {
   border-bottom: 1px solid var(--line);
 }
 
+.dialog-summary--four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .dialog-summary div {
   padding: 16px 10px;
   border-right: 1px solid var(--line);
@@ -2937,6 +2941,82 @@ button:focus-visible {
 
 .generate-options button.is-selected {
   font-weight: 700;
+}
+
+.scope-dialog {
+  width: min(590px, 100%);
+}
+
+.scope-mode-options {
+  margin-top: 25px;
+}
+
+.scope-mode-options > div {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.scope-document-list {
+  max-height: 270px;
+  overflow: auto;
+  margin: 2px 0 20px;
+  border-block: 1px solid var(--line);
+}
+
+.scope-document-row {
+  min-height: 66px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  padding: 12px 3px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.scope-document-row:last-child {
+  border-bottom: 0;
+}
+
+.scope-document-row input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--blue);
+}
+
+.scope-document-row > span {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.scope-document-row strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scope-document-row small,
+.scope-document-row em {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.scope-document-row em {
+  color: var(--blue);
+  white-space: nowrap;
+}
+
+.scope-document-row input:not(:checked) ~ em {
+  color: var(--muted);
+}
+
+.scope-error {
+  margin: -8px 0 16px !important;
+  color: #a14639 !important;
+  font-size: 12px !important;
 }
 
 .resume-studio-layout {

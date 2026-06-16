@@ -6,6 +6,7 @@ import {
     IconFileDescription,
     IconFileText,
     IconFileTypePdf,
+    IconFiles,
     IconPlus,
     IconRefresh,
     IconSettings,
@@ -114,6 +115,11 @@ function App() {
     useState<MatchWorkspaceStatus>("loading");
   const [matchError, setMatchError] = useState("");
   const [isAnalyzingMatch, setIsAnalyzingMatch] = useState(false);
+  const [scopeOpen, setScopeOpen] = useState(false);
+  const [scopeMode, setScopeMode] = useState<"all" | "selected">("all");
+  const [scopeDocumentIDs, setScopeDocumentIDs] = useState<string[]>([]);
+  const [scopeError, setScopeError] = useState("");
+  const [isSavingScope, setIsSavingScope] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
   const [generationLanguage, setGenerationLanguage] = useState("zh");
   const [generationPackaging, setGenerationPackaging] = useState(0.5);
@@ -793,6 +799,71 @@ function App() {
     }
   };
 
+  const openRunScope = () => {
+    const scope = matchReview?.scope;
+    if (!scope) {
+      return;
+    }
+    setScopeMode(scope.mode === "selected" ? "selected" : "all");
+    setScopeDocumentIDs(
+      scope.documents
+        .filter((document) => document.selected)
+        .map((document) => document.id),
+    );
+    setScopeError("");
+    setScopeOpen(true);
+  };
+
+  const handleScopeModeChange = (mode: "all" | "selected") => {
+    setScopeMode(mode);
+    setScopeError("");
+    if (mode === "selected" && scopeDocumentIDs.length === 0) {
+      setScopeDocumentIDs(
+        matchReview?.scope.documents.map((document) => document.id) ?? [],
+      );
+    }
+  };
+
+  const handleScopeDocumentToggle = (documentID: string) => {
+    setScopeDocumentIDs((current) =>
+      current.includes(documentID)
+        ? current.filter((id) => id !== documentID)
+        : [...current, documentID],
+    );
+    setScopeError("");
+  };
+
+  const handleScopeSave = async () => {
+    if (scopeMode === "selected" && scopeDocumentIDs.length === 0) {
+      setScopeError("至少选择一份资料，或改为使用全部资料。");
+      return;
+    }
+    setIsSavingScope(true);
+    setScopeError("");
+    try {
+      const review = await MatchService.SaveScope(
+        scopeMode,
+        scopeMode === "selected" ? scopeDocumentIDs : [],
+      );
+      setMatchReview(review);
+      setMatchStatus("ready");
+      await refreshResume();
+      await refreshPDF();
+      setScopeOpen(false);
+      showNotice(
+        review.status === "stale"
+          ? "资料范围已保存，请重新匹配后再生成简历"
+          : "资料范围已保存",
+      );
+    } catch (error) {
+      setScopeError(
+        error instanceof Error ? error.message : "资料范围保存失败，请重试。",
+      );
+    } finally {
+      setIsSavingScope(false);
+    }
+  };
+
   const handleResumeMarkdownChange = (value: string) => {
     setResumeMarkdown(value);
     setResumeDirty(value !== (resumeWorkspace?.markdown ?? ""));
@@ -1386,6 +1457,22 @@ function App() {
               </>
             ) : (
               <>
+                <button
+                  className="button button--secondary"
+                  disabled={
+                    matchStatus === "loading" ||
+                    isAnalyzingMatch ||
+                    !matchReview?.scope.documents.length
+                  }
+                  onClick={openRunScope}
+                  type="button"
+                >
+                  <IconFiles aria-hidden="true" size={18} stroke={1.65} />
+                  资料范围
+                  {matchReview?.scope.documents.length
+                    ? ` · ${matchReview.scope.selectedCount} / ${matchReview.scope.availableCount}`
+                    : ""}
+                </button>
                 {isAnalyzingMatch &&
                 providerSettings?.provider === "openai" ? (
                   <button
@@ -1639,6 +1726,101 @@ function App() {
         </div>
       )}
 
+      {scopeOpen && matchReview?.scope && (
+        <div
+          aria-labelledby="scope-title"
+          aria-modal="true"
+          className="modal-backdrop"
+          role="dialog"
+        >
+          <section className="generate-dialog scope-dialog">
+            <button
+              aria-label="关闭"
+              className="icon-button modal-close"
+              onClick={() => setScopeOpen(false)}
+              type="button"
+            >
+              <IconX aria-hidden="true" size={20} stroke={1.6} />
+            </button>
+            <span className="dialog-kicker">Resume Run Scope</span>
+            <h2 id="scope-title">选择本次匹配使用的资料</h2>
+            <p>
+              只会把所选资料对应的 Evidence 与来源发送给 Provider。范围变化后需要重新匹配。
+            </p>
+            <fieldset className="generate-options scope-mode-options">
+              <legend>资料模式</legend>
+              <div>
+                <button
+                  aria-pressed={scopeMode === "all"}
+                  className={scopeMode === "all" ? "is-selected" : ""}
+                  onClick={() => handleScopeModeChange("all")}
+                  type="button"
+                >
+                  使用全部资料
+                </button>
+                <button
+                  aria-pressed={scopeMode === "selected"}
+                  className={scopeMode === "selected" ? "is-selected" : ""}
+                  onClick={() => handleScopeModeChange("selected")}
+                  type="button"
+                >
+                  仅使用所选资料
+                </button>
+              </div>
+            </fieldset>
+            <div
+              aria-label="可选资料"
+              className="scope-document-list"
+              role="group"
+            >
+              {matchReview.scope.documents.map((document) => {
+                const checked =
+                  scopeMode === "all" ||
+                  scopeDocumentIDs.includes(document.id);
+                return (
+                  <label className="scope-document-row" key={document.id}>
+                    <input
+                      checked={checked}
+                      disabled={scopeMode === "all"}
+                      onChange={() => handleScopeDocumentToggle(document.id)}
+                      type="checkbox"
+                    />
+                    <span>
+                      <strong>{document.originalName}</strong>
+                      <small>{document.kind.toUpperCase()} · 本地资料</small>
+                    </span>
+                    <em>{checked ? "参与本次 Run" : "不参与"}</em>
+                  </label>
+                );
+              })}
+            </div>
+            {scopeError && (
+              <p className="scope-error" role="alert">
+                {scopeError}
+              </p>
+            )}
+            <div className="dialog-actions">
+              <button
+                className="button button--secondary"
+                disabled={isSavingScope}
+                onClick={() => setScopeOpen(false)}
+                type="button"
+              >
+                取消
+              </button>
+              <button
+                className="button button--primary"
+                disabled={isSavingScope}
+                onClick={() => void handleScopeSave()}
+                type="button"
+              >
+                {isSavingScope ? "正在保存" : "保存资料范围"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
       {generateOpen && (
         <div
           aria-labelledby="generate-title"
@@ -1660,7 +1842,7 @@ function App() {
             <p>
               先生成结构化 Resume，再派生 Markdown。缺失要求不会被补写成事实。
             </p>
-            <dl className="dialog-summary">
+            <dl className="dialog-summary dialog-summary--four">
               <div>
                 <dt>目标岗位</dt>
                 <dd>{matchReview?.jdTitle || "目标岗位"}</dd>
@@ -1677,6 +1859,14 @@ function App() {
                     : generationPackaging === 0.5
                       ? "平衡"
                       : "强化"}
+                </dd>
+              </div>
+              <div>
+                <dt>资料范围</dt>
+                <dd>
+                  {matchReview?.scope.mode === "selected"
+                    ? `${matchReview.scope.selectedCount} 份所选资料`
+                    : `全部 ${matchReview?.scope.availableCount ?? 0} 份资料`}
                 </dd>
               </div>
             </dl>
