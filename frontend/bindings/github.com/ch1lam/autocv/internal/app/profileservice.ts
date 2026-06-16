@@ -15,6 +15,12 @@ export function CreateProfile(name: string, defaultLanguage: string): $Cancellab
     });
 }
 
+export function ExportProfile(): $CancellablePromise<$models.ExportResult> {
+    return $Call.ByID(371983882).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
 export function GetOverview(): $CancellablePromise<$models.ProfileOverview> {
     return $Call.ByID(2947916482).then(($result: any) => {
         return $$createType0($result);
@@ -23,7 +29,7 @@ export function GetOverview(): $CancellablePromise<$models.ProfileOverview> {
 
 export function ImportMarkdown(): $CancellablePromise<$models.ImportMarkdownResult> {
     return $Call.ByID(1029681327).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType2($result);
     });
 }
 
@@ -41,7 +47,7 @@ export function SaveEvidence(input: $models.SaveEvidenceInput): $CancellableProm
 
 export function Search(query: string): $CancellablePromise<$models.ProfileSearchResult[]> {
     return $Call.ByID(3916904059, query).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType4($result);
     });
 }
 
@@ -53,6 +59,7 @@ export function SelectProfile(profileID: string): $CancellablePromise<$models.Pr
 
 // Private type creation functions
 const $$createType0 = $models.ProfileOverview.createFrom;
-const $$createType1 = $models.ImportMarkdownResult.createFrom;
-const $$createType2 = $models.ProfileSearchResult.createFrom;
-const $$createType3 = $Create.Array($$createType2);
+const $$createType1 = $models.ExportResult.createFrom;
+const $$createType2 = $models.ImportMarkdownResult.createFrom;
+const $$createType3 = $models.ProfileSearchResult.createFrom;
+const $$createType4 = $Create.Array($$createType3);

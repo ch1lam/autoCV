@@ -178,6 +178,7 @@ func testM1SyntheticScenario(
 		fakeprovider.New(),
 		fixture.files,
 		fakeMarkdownPicker{},
+		fixedProfileExportPicker{},
 		fixedClock{now: profileTestTime.Add(4 * time.Hour)},
 	)
 	restartedResume := NewResumeService(

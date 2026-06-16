@@ -102,6 +102,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	exportPicker := wailsdialog.NewExportPicker(app)
 	provider := providerrouter.New(
 		providerConfigRepository,
 		fakeprovider.New(),
@@ -122,6 +123,7 @@ func run() error {
 		provider,
 		managedFiles,
 		wailsdialog.NewMarkdownPicker(app),
+		exportPicker,
 		systemclock.Clock{},
 	)))
 	app.RegisterService(application.NewService(appservice.NewJDService(
@@ -155,7 +157,7 @@ func run() error {
 			os.Getenv("AUTOCV_TYPST_BIN"),
 			20*time.Second,
 		),
-		wailsdialog.NewExportPicker(app),
+		exportPicker,
 		systemclock.Clock{},
 	)))
 

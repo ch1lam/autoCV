@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,6 +40,26 @@ func (picker fakeMarkdownPicker) PickMarkdown() (
 	error,
 ) {
 	return picker.selected, picker.accepted, picker.err
+}
+
+type fixedProfileExportPicker struct {
+	path     string
+	accepted bool
+	err      error
+}
+
+func (picker fixedProfileExportPicker) PickProfileJSON(string) (
+	string,
+	bool,
+	error,
+) {
+	if picker.err != nil {
+		return "", false, picker.err
+	}
+	if !picker.accepted {
+		return "", false, nil
+	}
+	return picker.path, true, nil
 }
 
 type failingSaveRepository struct {
@@ -121,6 +143,7 @@ func TestProfileServiceImportsAndRestoresMarkdownProfile(t *testing.T) {
 		fakeprovider.New(),
 		files,
 		fakeMarkdownPicker{},
+		fixedProfileExportPicker{},
 		fixedClock{now: profileTestTime.Add(time.Hour)},
 	)
 	restored, err := restarted.GetOverview()
@@ -130,6 +153,53 @@ func TestProfileServiceImportsAndRestoresMarkdownProfile(t *testing.T) {
 	if len(restored.Documents) != 1 ||
 		len(restored.Evidence) != result.EvidenceCount {
 		t.Fatalf("expected persisted profile data, got %#v", restored)
+	}
+}
+
+func TestProfileServiceExportsStructuredProfileJSON(t *testing.T) {
+	service, _, _, _, root := newProfileServiceTest(t)
+
+	if _, err := service.ImportMarkdown(); err != nil {
+		t.Fatalf("import Markdown: %v", err)
+	}
+	exportPath := filepath.Join(root, "exports", "profile-export")
+	service.exporter = fixedProfileExportPicker{
+		path:     exportPath,
+		accepted: true,
+	}
+
+	result, err := service.ExportProfile()
+	if err != nil {
+		t.Fatalf("export profile: %v", err)
+	}
+	if result.Cancelled || result.Kind != "profile" {
+		t.Fatalf("unexpected export result %#v", result)
+	}
+	if filepath.Ext(result.Path) != ".json" {
+		t.Fatalf("expected json extension, got %q", result.Path)
+	}
+	contents, err := os.ReadFile(result.Path)
+	if err != nil {
+		t.Fatalf("read exported profile: %v", err)
+	}
+	if strings.Contains(string(contents), "chunkText") {
+		t.Fatal("export must not include raw chunk text")
+	}
+
+	var payload profileExportPayload
+	if err := json.Unmarshal(contents, &payload); err != nil {
+		t.Fatalf("decode exported profile: %v", err)
+	}
+	if payload.SchemaVersion != 1 || payload.Profile.Name != defaultProfileName {
+		t.Fatalf("unexpected payload header %#v", payload)
+	}
+	if len(payload.SourceDocuments) != 1 ||
+		payload.SourceDocuments[0].OriginalName != "backend-profile.md" ||
+		payload.SourceDocuments[0].ContentHash == "" {
+		t.Fatalf("unexpected source document list %#v", payload.SourceDocuments)
+	}
+	if len(payload.Evidence) == 0 || len(payload.Evidence[0].Sources) == 0 {
+		t.Fatalf("expected exported evidence with source locator, got %#v", payload.Evidence)
 	}
 }
 
@@ -619,6 +689,7 @@ func newProfileServiceTest(t *testing.T) (
 			},
 			accepted: true,
 		},
+		fixedProfileExportPicker{},
 		fixedClock{now: profileTestTime},
 	)
 	return service, repository, files, contents, root

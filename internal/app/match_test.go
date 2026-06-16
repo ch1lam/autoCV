@@ -393,6 +393,7 @@ func newMatchServiceFixtureFromFiles(
 			},
 			accepted: true,
 		},
+		fixedProfileExportPicker{},
 		fixedClock{now: profileTestTime},
 	)
 	jdService := NewJDService(

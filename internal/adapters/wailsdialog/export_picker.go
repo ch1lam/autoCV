@@ -52,4 +52,25 @@ func (picker *ExportPicker) PickMarkdown(
 	return path, path != "", nil
 }
 
+func (picker *ExportPicker) PickProfileJSON(
+	defaultName string,
+) (string, bool, error) {
+	path, err := picker.app.Dialog.SaveFileWithOptions(
+		&application.SaveFileDialogOptions{
+			Title:    "导出 Profile 数据",
+			Filename: defaultName,
+		},
+	).
+		AddFilter("JSON", "*.json").
+		PromptForSingleSelection()
+	if err != nil {
+		return "", false, fmt.Errorf(
+			"open Profile export dialog: %w",
+			err,
+		)
+	}
+	return path, path != "", nil
+}
+
 var _ ports.ExportPicker = (*ExportPicker)(nil)
+var _ ports.ProfileExportPicker = (*ExportPicker)(nil)

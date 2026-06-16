@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/ch1lam/autocv/internal/domain"
 	"github.com/ch1lam/autocv/internal/ports"
@@ -28,6 +29,7 @@ type ProfileService struct {
 	extractor  ports.ProfileExtractor
 	files      ports.ManagedFileStore
 	picker     ports.MarkdownPicker
+	exporter   ports.ProfileExportPicker
 	clock      ports.Clock
 }
 
@@ -105,6 +107,45 @@ type ImportMarkdownResult struct {
 	Warnings              []string              `json:"warnings"`
 }
 
+type profileExportPayload struct {
+	SchemaVersion   int                     `json:"schemaVersion"`
+	ExportedAt      string                  `json:"exportedAt"`
+	Profile         ProfileSummary          `json:"profile"`
+	SourceDocuments []profileExportDocument `json:"sourceDocuments"`
+	Evidence        []profileExportEvidence `json:"evidence"`
+}
+
+type profileExportDocument struct {
+	ID           string `json:"id"`
+	OriginalName string `json:"originalName"`
+	Kind         string `json:"kind"`
+	ContentHash  string `json:"contentHash"`
+	ParseStatus  string `json:"parseStatus"`
+	ImportedAt   string `json:"importedAt"`
+	UpdatedAt    string `json:"updatedAt"`
+}
+
+type profileExportEvidence struct {
+	ID                  string                        `json:"id"`
+	Kind                string                        `json:"kind"`
+	Title               string                        `json:"title"`
+	Content             string                        `json:"content"`
+	Confidence          float64                       `json:"confidence"`
+	UserVerified        bool                          `json:"userVerified"`
+	UpdatedAt           string                        `json:"updatedAt"`
+	ConflictEvidenceIDs []string                      `json:"conflictEvidenceIds"`
+	Sources             []profileExportEvidenceSource `json:"sources"`
+}
+
+type profileExportEvidenceSource struct {
+	ChunkID      string `json:"chunkId"`
+	DocumentID   string `json:"documentId"`
+	DocumentName string `json:"documentName"`
+	LocatorJSON  string `json:"locatorJson"`
+	QuoteStart   int    `json:"quoteStart"`
+	QuoteEnd     int    `json:"quoteEnd"`
+}
+
 func NewProfileService(
 	repository ports.ProfileRepository,
 	search ports.ProfileSearch,
@@ -112,6 +153,7 @@ func NewProfileService(
 	extractor ports.ProfileExtractor,
 	files ports.ManagedFileStore,
 	picker ports.MarkdownPicker,
+	exporter ports.ProfileExportPicker,
 	clock ports.Clock,
 ) *ProfileService {
 	return &ProfileService{
@@ -121,6 +163,7 @@ func NewProfileService(
 		extractor:  extractor,
 		files:      files,
 		picker:     picker,
+		exporter:   exporter,
 		clock:      clock,
 	}
 }
@@ -176,6 +219,50 @@ func (service *ProfileService) ImportMarkdown() (ImportMarkdownResult, error) {
 		return ImportMarkdownResult{Cancelled: true}, nil
 	}
 	return service.importMarkdown(context.Background(), selected)
+}
+
+func (service *ProfileService) ExportProfile() (ExportResult, error) {
+	ctx := context.Background()
+	profile, err := resolveActiveProfile(
+		ctx,
+		service.repository,
+		service.clock.Now(),
+	)
+	if err != nil {
+		return ExportResult{}, err
+	}
+	documents, err := service.repository.ListDocuments(ctx, profile.ID)
+	if err != nil {
+		return ExportResult{}, err
+	}
+	evidence, err := service.repository.ListEvidence(ctx, profile.ID)
+	if err != nil {
+		return ExportResult{}, err
+	}
+	payload := profileExportFrom(
+		profile,
+		documents,
+		evidence,
+		service.clock.Now(),
+	)
+	contents, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return ExportResult{}, fmt.Errorf("encode profile export: %w", err)
+	}
+	destination, selected, err := service.exporter.PickProfileJSON(
+		profileExportFilename(profile),
+	)
+	if err != nil {
+		return ExportResult{}, err
+	}
+	if !selected {
+		return ExportResult{Cancelled: true, Kind: "profile"}, nil
+	}
+	destination = ensureExtension(destination, ".json")
+	if err := service.files.ExportContents(contents, destination); err != nil {
+		return ExportResult{}, err
+	}
+	return ExportResult{Kind: "profile", Path: destination}, nil
 }
 
 func (service *ProfileService) resolveEvidenceConflict(
@@ -705,6 +792,90 @@ func profileSummary(profile domain.Profile) ProfileSummary {
 		DefaultLanguage: profile.DefaultLanguage,
 		Active:          profile.Active,
 	}
+}
+
+func profileExportFrom(
+	profile domain.Profile,
+	documents []domain.SourceDocument,
+	evidence []domain.Evidence,
+	now time.Time,
+) profileExportPayload {
+	relations := analyzeEvidenceRelations(evidence)
+	payload := profileExportPayload{
+		SchemaVersion:   1,
+		ExportedAt:      now.UTC().Format(time.RFC3339),
+		Profile:         profileSummary(profile),
+		SourceDocuments: make([]profileExportDocument, 0, len(documents)),
+		Evidence:        make([]profileExportEvidence, 0, len(evidence)),
+	}
+	for _, document := range documents {
+		payload.SourceDocuments = append(
+			payload.SourceDocuments,
+			profileExportDocument{
+				ID:           document.ID,
+				OriginalName: document.OriginalName,
+				Kind:         document.Kind,
+				ContentHash:  document.ContentHash,
+				ParseStatus:  document.ParseStatus,
+				ImportedAt:   document.CreatedAt.UTC().Format(time.RFC3339),
+				UpdatedAt:    document.UpdatedAt.UTC().Format(time.RFC3339),
+			},
+		)
+	}
+	for _, item := range evidence {
+		exported := profileExportEvidence{
+			ID:                  item.ID,
+			Kind:                item.Kind,
+			Title:               item.Title,
+			Content:             item.Content,
+			Confidence:          item.Confidence,
+			UserVerified:        item.UserVerified,
+			UpdatedAt:           item.UpdatedAt.UTC().Format(time.RFC3339),
+			ConflictEvidenceIDs: append([]string(nil), relations.conflictIDs[item.ID]...),
+			Sources:             make([]profileExportEvidenceSource, 0, len(item.Sources)),
+		}
+		for _, source := range item.Sources {
+			exported.Sources = append(
+				exported.Sources,
+				profileExportEvidenceSource{
+					ChunkID:      source.ChunkID,
+					DocumentID:   source.DocumentID,
+					DocumentName: source.DocumentName,
+					LocatorJSON:  source.LocatorJSON,
+					QuoteStart:   source.QuoteStart,
+					QuoteEnd:     source.QuoteEnd,
+				},
+			)
+		}
+		payload.Evidence = append(payload.Evidence, exported)
+	}
+	return payload
+}
+
+func profileExportFilename(profile domain.Profile) string {
+	return safeFilenameBase(profile.Name, "profile") + "-profile.json"
+}
+
+func safeFilenameBase(value string, fallback string) string {
+	var builder strings.Builder
+	for _, character := range strings.TrimSpace(value) {
+		switch {
+		case unicode.IsLetter(character), unicode.IsNumber(character):
+			builder.WriteRune(character)
+		case unicode.IsSpace(character), character == '-', character == '_':
+			if builder.Len() > 0 {
+				builder.WriteRune('-')
+			}
+		}
+		if builder.Len() >= 48 {
+			break
+		}
+	}
+	base := strings.Trim(builder.String(), "-")
+	if base == "" {
+		return fallback
+	}
+	return base
 }
 
 func evidenceSummary(item domain.Evidence) EvidenceSummary {
