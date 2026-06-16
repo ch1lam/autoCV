@@ -252,7 +252,7 @@ Markdown 职业资料
 - [x] 支持 Evidence 的查看、编辑和用户确认。
 - [x] 处理冲突信息和重复 Evidence。
 - [x] 允许为一次 Run 选择资料范围。
-- [ ] 增加 Profile 导出。
+- [x] 增加 Profile 导出。
 
 ### 7.3 验收
 
