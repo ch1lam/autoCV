@@ -45,6 +45,22 @@ func NewWorkflowService(
 	}
 }
 
+func RecoverInterruptedWorkflowStages(
+	ctx context.Context,
+	stageRepository ports.StageResultRepository,
+	clock ports.Clock,
+) (int64, error) {
+	return stageRepository.RecoverRunningStageResults(
+		ctx,
+		stageResultJSON(struct {
+			Message string `json:"message"`
+		}{
+			Message: "应用已重启，上一阶段未完成，可以直接重试。",
+		}),
+		clock.Now().UTC(),
+	)
+}
+
 func (service *WorkflowService) GetStatus() (WorkflowStatus, error) {
 	ctx := context.Background()
 	run, found, err := service.runRepository.LatestRun(ctx)

@@ -119,3 +119,100 @@ func TestStageResultRepositorySavesAndRestoresResults(t *testing.T) {
 		t.Fatalf("unexpected listed stage results %#v", results)
 	}
 }
+
+func TestStageResultRepositoryRecoversRunningResults(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDatabase(
+		t,
+		ctx,
+		filepath.Join(t.TempDir(), "stage-results-recovery.db"),
+	)
+	defer db.Close()
+	now := time.Date(2026, 6, 18, 9, 0, 0, 0, time.UTC)
+	seedResumeDependencies(t, db, now)
+	resumeRepository := NewResumeRepository(db)
+	run := domain.ResumeRun{
+		ID:             "run-1",
+		ProfileID:      "profile-1",
+		JDID:           "jd-1",
+		Status:         "active",
+		Stage:          string(workflow.StageDrafted),
+		PackagingLevel: 0.5,
+		Language:       domain.ResumeLanguageChinese,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	if err := resumeRepository.SaveRun(ctx, run); err != nil {
+		t.Fatalf("save resume run: %v", err)
+	}
+
+	repository := NewStageResultRepository(db)
+	running := workflow.StageResult{
+		ID:         "stage-result-running",
+		RunID:      run.ID,
+		Stage:      workflow.StageDrafted,
+		InputHash:  "draft-hash",
+		Status:     workflow.StageStatusRunning,
+		ResultJSON: `{"partial":true}`,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	if err := repository.SaveStageResult(ctx, running); err != nil {
+		t.Fatalf("save running stage result: %v", err)
+	}
+	succeeded := workflow.StageResult{
+		ID:         "stage-result-succeeded",
+		RunID:      run.ID,
+		Stage:      workflow.StageMatched,
+		InputHash:  "match-hash",
+		Status:     workflow.StageStatusSucceeded,
+		ResultJSON: `{"score":82}`,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	if err := repository.SaveStageResult(ctx, succeeded); err != nil {
+		t.Fatalf("save succeeded stage result: %v", err)
+	}
+
+	recoveredAt := now.Add(time.Minute)
+	count, err := repository.RecoverRunningStageResults(
+		ctx,
+		`{"message":"interrupted"}`,
+		recoveredAt,
+	)
+	if err != nil {
+		t.Fatalf("recover running stage results: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected one recovered stage result, got %d", count)
+	}
+
+	recovered, found, err := repository.LatestStageResult(
+		ctx,
+		run.ID,
+		workflow.StageDrafted,
+	)
+	if err != nil {
+		t.Fatalf("read recovered stage result: %v", err)
+	}
+	if !found ||
+		recovered.Status != workflow.StageStatusFailed ||
+		recovered.ResultJSON != "" ||
+		recovered.ErrorJSON != `{"message":"interrupted"}` ||
+		!recovered.UpdatedAt.Equal(recoveredAt) {
+		t.Fatalf("unexpected recovered stage result found=%v %#v", found, recovered)
+	}
+
+	restored, found, err := repository.SucceededStageResult(
+		ctx,
+		run.ID,
+		workflow.StageMatched,
+		"match-hash",
+	)
+	if err != nil {
+		t.Fatalf("read succeeded stage result: %v", err)
+	}
+	if !found || restored.ResultJSON != succeeded.ResultJSON {
+		t.Fatalf("expected succeeded stage result to survive, got found=%v %#v", found, restored)
+	}
+}

@@ -133,6 +133,21 @@ func run() error {
 	)))
 	resumeRepository := sqlite.NewResumeRepository(db)
 	stageResultRepository := sqlite.NewStageResultRepository(db)
+	recoveredStages, err := appservice.RecoverInterruptedWorkflowStages(
+		context.Background(),
+		stageResultRepository,
+		systemclock.Clock{},
+	)
+	if err != nil {
+		slog.Error("workflow.recover_interrupted.failed", slog.Any("error", err))
+		return err
+	}
+	if recoveredStages > 0 {
+		slog.Info(
+			"workflow.recover_interrupted.succeeded",
+			slog.Int64("stage_count", recoveredStages),
+		)
+	}
 	clarificationRepository := sqlite.NewClarificationRepository(db)
 	confirmationRepository := sqlite.NewRunConfirmationRepository(db)
 	app.RegisterService(application.NewService(appservice.NewMatchService(

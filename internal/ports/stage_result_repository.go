@@ -2,12 +2,18 @@ package ports
 
 import (
 	"context"
+	"time"
 
 	"github.com/ch1lam/autocv/internal/workflow"
 )
 
 type StageResultRepository interface {
 	SaveStageResult(context.Context, workflow.StageResult) error
+	RecoverRunningStageResults(
+		context.Context,
+		string,
+		time.Time,
+	) (int64, error)
 	ListStageResults(
 		context.Context,
 		string,

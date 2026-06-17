@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/ch1lam/autocv/internal/ports"
 	"github.com/ch1lam/autocv/internal/workflow"
@@ -49,6 +50,34 @@ func (repository *StageResultRepository) SaveStageResult(
 		return fmt.Errorf("save stage result: %w", err)
 	}
 	return nil
+}
+
+func (repository *StageResultRepository) RecoverRunningStageResults(
+	ctx context.Context,
+	errorJSON string,
+	now time.Time,
+) (int64, error) {
+	result, err := repository.db.ExecContext(
+		ctx,
+		`UPDATE stage_results
+		    SET status = ?,
+		        result_json = NULL,
+		        error_json = ?,
+		        updated_at = ?
+		  WHERE status = ?`,
+		string(workflow.StageStatusFailed),
+		nullableStageJSON(errorJSON),
+		formatTime(now),
+		string(workflow.StageStatusRunning),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("recover running stage results: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("count recovered stage results: %w", err)
+	}
+	return affected, nil
 }
 
 func (repository *StageResultRepository) ListStageResults(
