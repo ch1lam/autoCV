@@ -13,6 +13,7 @@ import (
 	sqliteadapter "github.com/ch1lam/autocv/internal/adapters/sqlite"
 	"github.com/ch1lam/autocv/internal/domain"
 	"github.com/ch1lam/autocv/internal/ports"
+	"github.com/ch1lam/autocv/internal/workflow"
 )
 
 type memoryArtifactRepository struct {
@@ -121,10 +122,36 @@ func TestPDFServicePreservesLastArtifactWhenRenderingFails(t *testing.T) {
 		rendered.ResumeID != generated.ResumeID {
 		t.Fatalf("unexpected rendered workspace %#v", rendered)
 	}
+	stageResult, found, err := resumes.stageRepository.LatestStageResult(
+		context.Background(),
+		generated.RunID,
+		workflow.StageRendered,
+	)
+	if err != nil {
+		t.Fatalf("read PDF stage result: %v", err)
+	}
+	if !found ||
+		stageResult.Status != workflow.StageStatusSucceeded ||
+		!strings.Contains(stageResult.ResultJSON, `"artifact_id"`) {
+		t.Fatalf("unexpected PDF stage result found=%v %#v", found, stageResult)
+	}
 	artifactID := rendered.ArtifactID
 
 	if _, err := service.Render(); err == nil {
 		t.Fatal("expected second render to fail")
+	}
+	stageResult, found, err = resumes.stageRepository.LatestStageResult(
+		context.Background(),
+		generated.RunID,
+		workflow.StageRendered,
+	)
+	if err != nil {
+		t.Fatalf("read failed PDF stage result: %v", err)
+	}
+	if !found ||
+		stageResult.Status != workflow.StageStatusFailed ||
+		!strings.Contains(stageResult.ErrorJSON, "synthetic Typst failure") {
+		t.Fatalf("unexpected failed PDF stage result found=%v %#v", found, stageResult)
 	}
 	restored, err := service.GetWorkspace()
 	if err != nil {

@@ -7,12 +7,15 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/ch1lam/autocv/internal/domain"
 	"github.com/ch1lam/autocv/internal/ports"
+	"github.com/ch1lam/autocv/internal/workflow"
 	"github.com/google/uuid"
 )
 
@@ -159,12 +162,46 @@ func (service *PDFService) Render() (PDFWorkspace, error) {
 	if err != nil {
 		return PDFWorkspace{}, err
 	}
+	inputHash := hashPDFRenderInput(resume)
+	now := service.clock.Now().UTC()
+	service.savePDFRenderStageResult(
+		ctx,
+		run.ID,
+		inputHash,
+		workflow.StageStatusRunning,
+		"",
+		"",
+		now,
+	)
 	rendered, err := service.renderer.Render(ctx, resume)
 	if err != nil {
+		status := workflow.StageStatusFailed
+		if errors.Is(err, context.Canceled) {
+			status = workflow.StageStatusCancelled
+		}
+		service.savePDFRenderStageResult(
+			ctx,
+			run.ID,
+			inputHash,
+			status,
+			"",
+			stageErrorJSON("PDF render failed", err),
+			service.clock.Now().UTC(),
+		)
 		return PDFWorkspace{}, err
 	}
 	if len(rendered.PreviewPages) == 0 {
-		return PDFWorkspace{}, errors.New("rendered PDF has no preview pages")
+		err := errors.New("rendered PDF has no preview pages")
+		service.savePDFRenderStageResult(
+			ctx,
+			run.ID,
+			inputHash,
+			workflow.StageStatusFailed,
+			"",
+			stageErrorJSON("PDF render failed", err),
+			service.clock.Now().UTC(),
+		)
+		return PDFWorkspace{}, err
 	}
 
 	artifactID := uuid.NewString()
@@ -175,6 +212,15 @@ func (service *PDFService) Render() (PDFWorkspace, error) {
 		rendered.PDF,
 	)
 	if err != nil {
+		service.savePDFRenderStageResult(
+			ctx,
+			run.ID,
+			inputHash,
+			workflow.StageStatusFailed,
+			"",
+			stageErrorJSON("PDF render failed", err),
+			service.clock.Now().UTC(),
+		)
 		return PDFWorkspace{}, err
 	}
 	previewPaths := make([]string, 0, len(rendered.PreviewPages))
@@ -186,6 +232,15 @@ func (service *PDFService) Render() (PDFWorkspace, error) {
 			page,
 		)
 		if err != nil {
+			service.savePDFRenderStageResult(
+				ctx,
+				run.ID,
+				inputHash,
+				workflow.StageStatusFailed,
+				"",
+				stageErrorJSON("PDF render failed", err),
+				service.clock.Now().UTC(),
+			)
 			return PDFWorkspace{}, err
 		}
 		previewPaths = append(previewPaths, previewPath)
@@ -202,9 +257,104 @@ func (service *PDFService) Render() (PDFWorkspace, error) {
 		CreatedAt:    service.clock.Now().UTC(),
 	}
 	if err := service.artifacts.Save(ctx, artifact); err != nil {
+		service.savePDFRenderStageResult(
+			ctx,
+			run.ID,
+			inputHash,
+			workflow.StageStatusFailed,
+			"",
+			stageErrorJSON("PDF render failed", err),
+			service.clock.Now().UTC(),
+		)
 		return PDFWorkspace{}, err
 	}
+	run.Stage = string(workflow.StageRendered)
+	run.UpdatedAt = artifact.CreatedAt
+	if err := service.resumes.resumeRepository.SaveRun(ctx, run); err != nil {
+		service.savePDFRenderStageResult(
+			ctx,
+			run.ID,
+			inputHash,
+			workflow.StageStatusFailed,
+			"",
+			stageErrorJSON("PDF render failed", err),
+			service.clock.Now().UTC(),
+		)
+		return PDFWorkspace{}, err
+	}
+	service.savePDFRenderStageResult(
+		ctx,
+		run.ID,
+		inputHash,
+		workflow.StageStatusSucceeded,
+		pdfRenderStageResultJSON(artifact, resume),
+		"",
+		artifact.CreatedAt,
+	)
 	return service.GetWorkspace()
+}
+
+func (service *PDFService) savePDFRenderStageResult(
+	ctx context.Context,
+	runID string,
+	inputHash string,
+	status workflow.StageStatus,
+	resultJSON string,
+	errorJSON string,
+	now time.Time,
+) {
+	if service.resumes.stageRepository == nil {
+		return
+	}
+	result := workflow.StageResult{
+		ID:         stageResultID(runID, workflow.StageRendered, inputHash),
+		RunID:      runID,
+		Stage:      workflow.StageRendered,
+		InputHash:  inputHash,
+		Status:     status,
+		ResultJSON: resultJSON,
+		ErrorJSON:  errorJSON,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	if err := service.resumes.stageRepository.SaveStageResult(ctx, result); err != nil {
+		slog.Error(
+			"pdf.stage_result.persist.failed",
+			slog.String("run_id", runID),
+			slog.String("stage", string(workflow.StageRendered)),
+			slog.String("status", string(status)),
+			slog.Any("error", err),
+		)
+	}
+}
+
+func hashPDFRenderInput(resume domain.Resume) string {
+	digest := sha256.Sum256([]byte(fmt.Sprintf(
+		"%s\n%d\n%s",
+		resume.ID,
+		resume.Version,
+		resume.InputHash,
+	)))
+	return hex.EncodeToString(digest[:])
+}
+
+func pdfRenderStageResultJSON(
+	artifact domain.Artifact,
+	resume domain.Resume,
+) string {
+	return stageResultJSON(struct {
+		ArtifactID string `json:"artifact_id"`
+		ResumeID   string `json:"resume_id"`
+		InputHash  string `json:"input_hash"`
+		Version    int    `json:"version"`
+		PageCount  int    `json:"page_count"`
+	}{
+		ArtifactID: artifact.ID,
+		ResumeID:   resume.ID,
+		InputHash:  hashPDFRenderInput(resume),
+		Version:    resume.Version,
+		PageCount:  len(artifact.PreviewPaths),
+	})
 }
 
 func (service *PDFService) ExportPDF() (ExportResult, error) {
