@@ -155,10 +155,7 @@ func (repository *ResumeRepository) GetLatest(
 	profileID string,
 	jdID string,
 ) (domain.ResumeRun, domain.Resume, bool, error) {
-	var run domain.ResumeRun
-	var runCreatedAt string
-	var runUpdatedAt string
-	err := repository.db.QueryRowContext(
+	run, err := scanResumeRun(repository.db.QueryRowContext(
 		ctx,
 		`SELECT id, profile_id, jd_id, status, stage, packaging_level,
 		        language, created_at, updated_at
@@ -168,17 +165,7 @@ func (repository *ResumeRepository) GetLatest(
 		  LIMIT 1`,
 		profileID,
 		jdID,
-	).Scan(
-		&run.ID,
-		&run.ProfileID,
-		&run.JDID,
-		&run.Status,
-		&run.Stage,
-		&run.PackagingLevel,
-		&run.Language,
-		&runCreatedAt,
-		&runUpdatedAt,
-	)
+	))
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.ResumeRun{}, domain.Resume{}, false, nil
 	}
@@ -188,20 +175,34 @@ func (repository *ResumeRepository) GetLatest(
 			err,
 		)
 	}
-	run.CreatedAt, err = parseTime(runCreatedAt)
-	if err != nil {
-		return domain.ResumeRun{}, domain.Resume{}, false, err
-	}
-	run.UpdatedAt, err = parseTime(runUpdatedAt)
-	if err != nil {
-		return domain.ResumeRun{}, domain.Resume{}, false, err
-	}
-
 	resume, found, err := repository.getLatestResume(ctx, run.ID)
 	if err != nil {
 		return domain.ResumeRun{}, domain.Resume{}, false, err
 	}
 	return run, resume, found, nil
+}
+
+func (repository *ResumeRepository) LatestRun(
+	ctx context.Context,
+) (domain.ResumeRun, bool, error) {
+	run, err := scanResumeRun(repository.db.QueryRowContext(
+		ctx,
+		`SELECT id, profile_id, jd_id, status, stage, packaging_level,
+		        language, created_at, updated_at
+		   FROM resume_runs
+		  ORDER BY updated_at DESC, created_at DESC, id
+		  LIMIT 1`,
+	))
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.ResumeRun{}, false, nil
+	}
+	if err != nil {
+		return domain.ResumeRun{}, false, fmt.Errorf(
+			"get latest resume run: %w",
+			err,
+		)
+	}
+	return run, true, nil
 }
 
 func (repository *ResumeRepository) SaveRun(
@@ -335,6 +336,39 @@ func saveResumeRun(
 		formatTime(run.UpdatedAt),
 	)
 	return err
+}
+
+type resumeRunScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanResumeRun(scanner resumeRunScanner) (domain.ResumeRun, error) {
+	var run domain.ResumeRun
+	var createdAt string
+	var updatedAt string
+	if err := scanner.Scan(
+		&run.ID,
+		&run.ProfileID,
+		&run.JDID,
+		&run.Status,
+		&run.Stage,
+		&run.PackagingLevel,
+		&run.Language,
+		&createdAt,
+		&updatedAt,
+	); err != nil {
+		return domain.ResumeRun{}, err
+	}
+	var err error
+	run.CreatedAt, err = parseTime(createdAt)
+	if err != nil {
+		return domain.ResumeRun{}, err
+	}
+	run.UpdatedAt, err = parseTime(updatedAt)
+	if err != nil {
+		return domain.ResumeRun{}, err
+	}
+	return run, nil
 }
 
 func (repository *ResumeRepository) getLatestResume(

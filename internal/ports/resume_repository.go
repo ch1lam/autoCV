@@ -18,6 +18,7 @@ type ResumeRepository interface {
 }
 
 type ResumeRunRepository interface {
+	LatestRun(context.Context) (domain.ResumeRun, bool, error)
 	SaveRun(context.Context, domain.ResumeRun) error
 }
 

@@ -26,6 +26,33 @@ func TestStageValidity(t *testing.T) {
 	}
 }
 
+func TestOrderedStagesReturnsStateMachineOrder(t *testing.T) {
+	stages := OrderedStages()
+	expected := []Stage{
+		StageProfileReady,
+		StageJDAnalyzed,
+		StageMatched,
+		StageRequiresUserInput,
+		StageDrafted,
+		StageReviewed,
+		StageRendered,
+		StageCompleted,
+	}
+	if len(stages) != len(expected) {
+		t.Fatalf("expected %d stages, got %d", len(expected), len(stages))
+	}
+	for index := range expected {
+		if stages[index] != expected[index] {
+			t.Fatalf("unexpected stage order %#v", stages)
+		}
+	}
+
+	stages[0] = Stage("mutated")
+	if OrderedStages()[0] != StageProfileReady {
+		t.Fatal("ordered stages should return a defensive copy")
+	}
+}
+
 func TestStageStatusValidity(t *testing.T) {
 	for _, status := range []StageStatus{
 		StageStatusPending,

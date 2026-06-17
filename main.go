@@ -147,6 +147,10 @@ func run() error {
 		provider,
 		systemclock.Clock{},
 	)))
+	app.RegisterService(application.NewService(appservice.NewWorkflowService(
+		resumeRepository,
+		stageResultRepository,
+	)))
 	resumeService := appservice.NewResumeService(
 		resumeRepository,
 		stageResultRepository,

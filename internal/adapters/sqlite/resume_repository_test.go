@@ -64,6 +64,14 @@ func TestResumeRepositoryAppendsVersionsAndLoadsBlockSources(t *testing.T) {
 		saved.Blocks[0].SourceEvidenceIDs[0] != "evidence-1" {
 		t.Fatalf("unexpected block sources: %#v", saved.Blocks[0].SourceEvidenceIDs)
 	}
+
+	latestRun, found, err := repository.LatestRun(ctx)
+	if err != nil {
+		t.Fatalf("get latest run: %v", err)
+	}
+	if !found || latestRun.ID != run.ID || latestRun.Stage != run.Stage {
+		t.Fatalf("unexpected latest run found=%v %#v", found, latestRun)
+	}
 }
 
 func TestResumeRepositoryReplacesRunScopeDocuments(t *testing.T) {

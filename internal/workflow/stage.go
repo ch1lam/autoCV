@@ -13,6 +13,17 @@ const (
 	StageCompleted         Stage = "completed"
 )
 
+var orderedStages = []Stage{
+	StageProfileReady,
+	StageJDAnalyzed,
+	StageMatched,
+	StageRequiresUserInput,
+	StageDrafted,
+	StageReviewed,
+	StageRendered,
+	StageCompleted,
+}
+
 type StageStatus string
 
 const (
@@ -38,6 +49,12 @@ func (stage Stage) Valid() bool {
 	default:
 		return false
 	}
+}
+
+func OrderedStages() []Stage {
+	stages := make([]Stage, len(orderedStages))
+	copy(stages, orderedStages)
+	return stages
 }
 
 func (status StageStatus) Valid() bool {

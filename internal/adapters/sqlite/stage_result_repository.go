@@ -51,6 +51,38 @@ func (repository *StageResultRepository) SaveStageResult(
 	return nil
 }
 
+func (repository *StageResultRepository) ListStageResults(
+	ctx context.Context,
+	runID string,
+) ([]workflow.StageResult, error) {
+	rows, err := repository.db.QueryContext(
+		ctx,
+		`SELECT id, run_id, stage, input_hash, status, result_json, error_json,
+		        created_at, updated_at
+		   FROM stage_results
+		  WHERE run_id = ?
+		  ORDER BY updated_at DESC, created_at DESC, id DESC`,
+		runID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list stage results: %w", err)
+	}
+	defer rows.Close()
+
+	results := make([]workflow.StageResult, 0)
+	for rows.Next() {
+		result, err := scanStageResult(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan stage result: %w", err)
+		}
+		results = append(results, result)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate stage results: %w", err)
+	}
+	return results, nil
+}
+
 func (repository *StageResultRepository) LatestStageResult(
 	ctx context.Context,
 	runID string,

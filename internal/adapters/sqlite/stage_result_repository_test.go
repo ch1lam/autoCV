@@ -108,4 +108,14 @@ func TestStageResultRepositorySavesAndRestoresResults(t *testing.T) {
 		latest.ErrorJSON != second.ErrorJSON {
 		t.Fatalf("unexpected latest stage result found=%v %#v", found, latest)
 	}
+
+	results, err := repository.ListStageResults(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("list stage results: %v", err)
+	}
+	if len(results) != 2 ||
+		results[0].ID != second.ID ||
+		results[1].ID != first.ID {
+		t.Fatalf("unexpected listed stage results %#v", results)
+	}
 }

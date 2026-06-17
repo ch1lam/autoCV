@@ -8,6 +8,10 @@ import (
 
 type StageResultRepository interface {
 	SaveStageResult(context.Context, workflow.StageResult) error
+	ListStageResults(
+		context.Context,
+		string,
+	) ([]workflow.StageResult, error)
 	LatestStageResult(
 		context.Context,
 		string,
