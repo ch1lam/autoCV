@@ -268,7 +268,7 @@ Markdown 职业资料
 - [x] 增加 Clarification Question Schema 和表。
 - [x] 根据产品规则生成最多 5 个问题。
 - [x] 支持回答、跳过和第二轮追问。
-- [ ] 把用户确认写入 Evidence 或 Run Confirmation。
+- [x] 把用户确认写入 Evidence 或 Run Confirmation。
 - [ ] 跳过后自动降低对应表述强度。
 
 验收：
