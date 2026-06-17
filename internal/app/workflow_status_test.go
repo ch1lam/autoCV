@@ -34,6 +34,22 @@ func TestWorkflowServiceRestoresLatestRunStages(t *testing.T) {
 		CreatedAt: profileTestTime.Add(time.Hour),
 		UpdatedAt: profileTestTime.Add(time.Hour),
 	}
+	staleRenderedResult := workflow.StageResult{
+		ID:         "stage-result-rendered-stale",
+		RunID:      run.ID,
+		Stage:      workflow.StageRendered,
+		InputHash:  "render-hash",
+		Status:     workflow.StageStatusSucceeded,
+		ResultJSON: `{"artifact_id":"artifact-1"}`,
+		CreatedAt:  profileTestTime.Add(30 * time.Minute),
+		UpdatedAt:  profileTestTime.Add(30 * time.Minute),
+	}
+	if err := fixture.stageRepository.SaveStageResult(
+		context.Background(),
+		staleRenderedResult,
+	); err != nil {
+		t.Fatalf("save rendered stage result: %v", err)
+	}
 	if err := fixture.stageRepository.SaveStageResult(
 		context.Background(),
 		failed,

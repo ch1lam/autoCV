@@ -79,6 +79,8 @@ func workflowStatusFrom(
 	}
 
 	stages := make([]WorkflowStageSummary, 0, len(workflow.OrderedStages()))
+	var newestUpstreamStageResult workflow.StageResult
+	var hasUpstreamStageResult bool
 	for _, stage := range workflow.OrderedStages() {
 		summary := WorkflowStageSummary{
 			Stage:  string(stage),
@@ -91,6 +93,18 @@ func workflowStatusFrom(
 			summary.HasError = strings.TrimSpace(result.ErrorJSON) != ""
 			summary.ErrorMessage = workflowStageErrorMessage(result.ErrorJSON)
 			summary.UpdatedAt = result.UpdatedAt.UTC().Format(timeFormat)
+			if hasUpstreamStageResult &&
+				result.UpdatedAt.Before(newestUpstreamStageResult.UpdatedAt) {
+				summary = WorkflowStageSummary{
+					Stage:  string(stage),
+					Status: string(workflow.StageStatusPending),
+				}
+			}
+			if !hasUpstreamStageResult ||
+				newestUpstreamStageResult.UpdatedAt.Before(result.UpdatedAt) {
+				newestUpstreamStageResult = result
+				hasUpstreamStageResult = true
+			}
 		}
 		stages = append(stages, summary)
 	}
