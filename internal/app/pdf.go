@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -163,6 +164,16 @@ func (service *PDFService) Render() (PDFWorkspace, error) {
 		return PDFWorkspace{}, err
 	}
 	inputHash := hashPDFRenderInput(resume)
+	if workspace, reused, err := service.reuseSuccessfulPDFRenderStage(
+		ctx,
+		run.ID,
+		resume,
+		inputHash,
+	); err != nil {
+		return PDFWorkspace{}, err
+	} else if reused {
+		return workspace, nil
+	}
 	now := service.clock.Now().UTC()
 	service.savePDFRenderStageResult(
 		ctx,
@@ -292,6 +303,56 @@ func (service *PDFService) Render() (PDFWorkspace, error) {
 		artifact.CreatedAt,
 	)
 	return service.GetWorkspace()
+}
+
+func (service *PDFService) reuseSuccessfulPDFRenderStage(
+	ctx context.Context,
+	runID string,
+	resume domain.Resume,
+	inputHash string,
+) (PDFWorkspace, bool, error) {
+	if service.resumes.stageRepository == nil {
+		return PDFWorkspace{}, false, nil
+	}
+	stageResult, found, err := service.resumes.stageRepository.SucceededStageResult(
+		ctx,
+		runID,
+		workflow.StageRendered,
+		inputHash,
+	)
+	if err != nil {
+		return PDFWorkspace{}, false, err
+	}
+	if !found {
+		return PDFWorkspace{}, false, nil
+	}
+	var payload struct {
+		ArtifactID string `json:"artifact_id"`
+		ResumeID   string `json:"resume_id"`
+	}
+	if err := json.Unmarshal([]byte(stageResult.ResultJSON), &payload); err != nil {
+		return PDFWorkspace{}, false, nil
+	}
+	if payload.ResumeID != resume.ID {
+		return PDFWorkspace{}, false, nil
+	}
+	artifact, found, err := service.artifacts.GetLatest(
+		ctx,
+		runID,
+		domain.ArtifactKindPDF,
+	)
+	if err != nil {
+		return PDFWorkspace{}, false, err
+	}
+	if !found || artifact.ID != payload.ArtifactID ||
+		artifact.ResumeID != resume.ID {
+		return PDFWorkspace{}, false, nil
+	}
+	workspace, err := service.GetWorkspace()
+	if err != nil {
+		return PDFWorkspace{}, false, err
+	}
+	return workspace, true, nil
 }
 
 func (service *PDFService) savePDFRenderStageResult(

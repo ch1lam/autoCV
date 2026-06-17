@@ -137,8 +137,31 @@ func TestPDFServicePreservesLastArtifactWhenRenderingFails(t *testing.T) {
 	}
 	artifactID := rendered.ArtifactID
 
+	reused, err := service.Render()
+	if err != nil {
+		t.Fatalf("reuse rendered PDF: %v", err)
+	}
+	if reused.ArtifactID != artifactID || renderer.calls != 1 {
+		t.Fatalf(
+			"expected PDF render reuse artifact=%q calls=%d workspace=%#v",
+			artifactID,
+			renderer.calls,
+			reused,
+		)
+	}
+
+	editedMarkdown := strings.Replace(
+		generated.Markdown,
+		generated.Blocks[0].Content,
+		generated.Blocks[0].Content+" 用户确认补充。",
+		1,
+	)
+	if _, err := resumes.UpdateMarkdown(editedMarkdown); err != nil {
+		t.Fatalf("update resume before failed render: %v", err)
+	}
+	service.clock = fixedClock{now: profileTestTime.Add(4 * time.Hour)}
 	if _, err := service.Render(); err == nil {
-		t.Fatal("expected second render to fail")
+		t.Fatal("expected render after resume change to fail")
 	}
 	stageResult, found, err = resumes.stageRepository.LatestStageResult(
 		context.Background(),
@@ -157,7 +180,7 @@ func TestPDFServicePreservesLastArtifactWhenRenderingFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("restore PDF workspace: %v", err)
 	}
-	if restored.ArtifactID != artifactID || restored.Status != "ready" {
+	if restored.ArtifactID != artifactID || restored.Status != "stale" {
 		t.Fatalf("expected previous artifact to survive, got %#v", restored)
 	}
 }
