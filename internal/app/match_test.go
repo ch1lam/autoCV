@@ -111,6 +111,7 @@ func TestMatchServiceAnalyzesScoresAndRestoresReview(t *testing.T) {
 		fixture.scopeRepository,
 		fixture.scopeRepository,
 		fixture.clarificationRepository,
+		fixture.confirmationRepository,
 		fixture.profileRepository,
 		fixture.jdRepository,
 		fakeprovider.New(),
@@ -152,6 +153,31 @@ func TestMatchServiceAnswersSkipsAndCreatesSecondRound(t *testing.T) {
 		}
 		if err != nil {
 			t.Fatalf("handle first round question: %v", err)
+		}
+	}
+	var runID string
+	if err := fixture.db.QueryRow(
+		"SELECT id FROM resume_runs LIMIT 1",
+	).Scan(&runID); err != nil {
+		t.Fatalf("read resume run id: %v", err)
+	}
+	confirmations, err := fixture.confirmationRepository.ListRunConfirmations(
+		context.Background(),
+		runID,
+	)
+	if err != nil {
+		t.Fatalf("list run confirmations: %v", err)
+	}
+	if len(confirmations) != 3 {
+		t.Fatalf(
+			"expected answered questions to become confirmations, got %#v",
+			confirmations,
+		)
+	}
+	for _, confirmation := range confirmations {
+		if confirmation.Content != "有相关经验，但缺少可公开量化结果。" ||
+			confirmation.RequirementID == "" {
+			t.Fatalf("unexpected run confirmation %#v", confirmation)
 		}
 	}
 	pendingRoundTwo := pendingClarificationsInRound(review, 2)
@@ -478,6 +504,7 @@ type matchServiceFixture struct {
 	matchRepository         *sqliteadapter.MatchRepository
 	scopeRepository         *sqliteadapter.ResumeRepository
 	clarificationRepository *sqliteadapter.ClarificationRepository
+	confirmationRepository  *sqliteadapter.RunConfirmationRepository
 	profileService          *ProfileService
 	jdService               *JDService
 	jdText                  string
@@ -545,6 +572,7 @@ func newMatchServiceFixtureFromFiles(
 	matchRepository := sqliteadapter.NewMatchRepository(db)
 	scopeRepository := sqliteadapter.NewResumeRepository(db)
 	clarificationRepository := sqliteadapter.NewClarificationRepository(db)
+	confirmationRepository := sqliteadapter.NewRunConfirmationRepository(db)
 	provider := fakeprovider.New()
 	profileService := NewProfileService(
 		profileRepository,
@@ -575,6 +603,7 @@ func newMatchServiceFixtureFromFiles(
 			scopeRepository,
 			scopeRepository,
 			clarificationRepository,
+			confirmationRepository,
 			profileRepository,
 			jdRepository,
 			suggester,
@@ -585,6 +614,7 @@ func newMatchServiceFixtureFromFiles(
 		matchRepository:         matchRepository,
 		scopeRepository:         scopeRepository,
 		clarificationRepository: clarificationRepository,
+		confirmationRepository:  confirmationRepository,
 		profileService:          profileService,
 		jdService:               jdService,
 		jdText:                  string(jdContents),

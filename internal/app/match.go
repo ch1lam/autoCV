@@ -25,6 +25,7 @@ type MatchService struct {
 	scopeRepository         ports.RunScopeRepository
 	runRepository           ports.ResumeRunRepository
 	clarificationRepository ports.ClarificationRepository
+	confirmationRepository  ports.RunConfirmationRepository
 	profileRepository       ports.ProfileRepository
 	jdRepository            ports.JDRepository
 	suggester               ports.MatchSuggester
@@ -133,6 +134,7 @@ func NewMatchService(
 	scopeRepository ports.RunScopeRepository,
 	runRepository ports.ResumeRunRepository,
 	clarificationRepository ports.ClarificationRepository,
+	confirmationRepository ports.RunConfirmationRepository,
 	profileRepository ports.ProfileRepository,
 	jdRepository ports.JDRepository,
 	suggester ports.MatchSuggester,
@@ -143,6 +145,7 @@ func NewMatchService(
 		scopeRepository:         scopeRepository,
 		runRepository:           runRepository,
 		clarificationRepository: clarificationRepository,
+		confirmationRepository:  confirmationRepository,
 		profileRepository:       profileRepository,
 		jdRepository:            jdRepository,
 		suggester:               suggester,
@@ -389,11 +392,13 @@ func (service *MatchService) updateClarification(
 		return MatchReview{}, err
 	}
 	var found bool
+	var target domain.ClarificationQuestion
 	for _, question := range questions {
 		if question.ID != questionID {
 			continue
 		}
 		found = true
+		target = question
 		if question.Status != domain.ClarificationPending {
 			return MatchReview{}, fmt.Errorf(
 				"clarification question %q has already been handled",
@@ -410,6 +415,16 @@ func (service *MatchService) updateClarification(
 	}
 
 	now := service.clock.Now().UTC()
+	if err := service.saveRunConfirmation(
+		ctx,
+		runID,
+		target,
+		status,
+		answer,
+		now,
+	); err != nil {
+		return MatchReview{}, err
+	}
 	if _, err := service.clarificationRepository.UpdateQuestionStatus(
 		ctx,
 		questionID,
@@ -417,6 +432,19 @@ func (service *MatchService) updateClarification(
 		answer,
 		now,
 	); err != nil {
+		if status == domain.ClarificationAnswered {
+			if deleteErr := service.confirmationRepository.DeleteRunConfirmation(
+				ctx,
+				runID,
+				questionID,
+			); deleteErr != nil {
+				slog.Error(
+					"match.confirmation.rollback.failed",
+					slog.String("question_id", questionID),
+					slog.Any("error", deleteErr),
+				)
+			}
+		}
 		return MatchReview{}, err
 	}
 	questions, err = service.clarificationRepository.ListQuestions(ctx, runID)
@@ -433,6 +461,39 @@ func (service *MatchService) updateClarification(
 		return MatchReview{}, err
 	}
 	return service.getReview(ctx)
+}
+
+func (service *MatchService) saveRunConfirmation(
+	ctx context.Context,
+	runID string,
+	question domain.ClarificationQuestion,
+	status domain.ClarificationQuestionStatus,
+	answer string,
+	now time.Time,
+) error {
+	switch status {
+	case domain.ClarificationAnswered:
+		return service.confirmationRepository.SaveRunConfirmation(
+			ctx,
+			domain.RunConfirmation{
+				ID:                      runConfirmationID(runID, question.ID),
+				RunID:                   runID,
+				ClarificationQuestionID: question.ID,
+				RequirementID:           question.RequirementID,
+				Content:                 answer,
+				CreatedAt:               now,
+				UpdatedAt:               now,
+			},
+		)
+	case domain.ClarificationSkipped:
+		return service.confirmationRepository.DeleteRunConfirmation(
+			ctx,
+			runID,
+			question.ID,
+		)
+	default:
+		return domain.ValidateClarificationResponse(status, answer)
+	}
 }
 
 func (service *MatchService) currentReadyMatchAnalysis(
@@ -1202,6 +1263,17 @@ func clarificationQuestionID(
 			runID,
 			round,
 			requirementID,
+		)),
+	).String()
+}
+
+func runConfirmationID(runID string, questionID string) string {
+	return uuid.NewSHA1(
+		uuid.NameSpaceURL,
+		[]byte(fmt.Sprintf(
+			"https://autocv.local/run-confirmations/%s/%s",
+			runID,
+			questionID,
 		)),
 	).String()
 }
