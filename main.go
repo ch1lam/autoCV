@@ -149,6 +149,7 @@ func run() error {
 	)))
 	resumeService := appservice.NewResumeService(
 		resumeRepository,
+		stageResultRepository,
 		confirmationRepository,
 		matchRepository,
 		profileRepository,

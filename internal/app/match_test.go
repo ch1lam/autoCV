@@ -605,6 +605,7 @@ func TestMatchServiceAppliesSelectedRunDocuments(t *testing.T) {
 	}
 	resumeService := NewResumeService(
 		fixture.scopeRepository,
+		fixture.stageRepository,
 		fixture.confirmationRepository,
 		fixture.matchRepository,
 		fixture.profileRepository,

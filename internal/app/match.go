@@ -244,7 +244,7 @@ func (service *MatchService) Analyze() (MatchReview, error) {
 				input,
 				workflow.StageStatusCancelled,
 				"",
-				stageErrorJSON(err),
+				stageErrorJSON(defaultMatchAnalysisErr, err),
 				service.clock.Now().UTC(),
 			)
 			return MatchReview{}, fmt.Errorf("suggest matches: %w", err)
@@ -255,7 +255,7 @@ func (service *MatchService) Analyze() (MatchReview, error) {
 			input,
 			workflow.StageStatusFailed,
 			"",
-			stageErrorJSON(err),
+			stageErrorJSON(defaultMatchAnalysisErr, err),
 			service.clock.Now().UTC(),
 		)
 		return MatchReview{}, fmt.Errorf("suggest matches: %w", err)
@@ -271,7 +271,7 @@ func (service *MatchService) Analyze() (MatchReview, error) {
 			input,
 			workflow.StageStatusFailed,
 			"",
-			stageErrorJSON(err),
+			stageErrorJSON(defaultMatchAnalysisErr, err),
 			service.clock.Now().UTC(),
 		)
 		return MatchReview{}, fmt.Errorf("validate match suggestions: %w", err)
@@ -284,7 +284,7 @@ func (service *MatchService) Analyze() (MatchReview, error) {
 			input,
 			workflow.StageStatusFailed,
 			"",
-			stageErrorJSON(err),
+			stageErrorJSON(defaultMatchAnalysisErr, err),
 			service.clock.Now().UTC(),
 		)
 		return MatchReview{}, fmt.Errorf("calculate match score: %w", err)
@@ -836,8 +836,8 @@ func matchStageResultJSON(
 	})
 }
 
-func stageErrorJSON(err error) string {
-	message := defaultMatchAnalysisErr
+func stageErrorJSON(defaultMessage string, err error) string {
+	message := defaultMessage
 	if err != nil {
 		message = err.Error()
 	}

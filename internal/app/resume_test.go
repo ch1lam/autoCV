@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -8,7 +10,28 @@ import (
 
 	"github.com/ch1lam/autocv/internal/adapters/fakeprovider"
 	sqliteadapter "github.com/ch1lam/autocv/internal/adapters/sqlite"
+	"github.com/ch1lam/autocv/internal/domain"
+	"github.com/ch1lam/autocv/internal/ports"
+	"github.com/ch1lam/autocv/internal/workflow"
 )
+
+type failingResumeDrafter struct{}
+
+func (failingResumeDrafter) DraftResume(
+	context.Context,
+	ports.DraftResumeRequest,
+) (domain.ResumeDraft, error) {
+	return domain.ResumeDraft{}, errors.New("resume provider unavailable")
+}
+
+type cancelledResumeDrafter struct{}
+
+func (cancelledResumeDrafter) DraftResume(
+	context.Context,
+	ports.DraftResumeRequest,
+) (domain.ResumeDraft, error) {
+	return domain.ResumeDraft{}, context.Canceled
+}
 
 func TestResumeServiceGeneratesRestoresEditsAndPreservesLocks(t *testing.T) {
 	matchFixture := newMatchServiceFixture(t, fakeprovider.New())
@@ -22,6 +45,7 @@ func TestResumeServiceGeneratesRestoresEditsAndPreservesLocks(t *testing.T) {
 	)
 	service := NewResumeService(
 		repository,
+		matchFixture.stageRepository,
 		matchFixture.confirmationRepository,
 		matchFixture.matchRepository,
 		matchFixture.profileRepository,
@@ -41,6 +65,19 @@ func TestResumeServiceGeneratesRestoresEditsAndPreservesLocks(t *testing.T) {
 	if generated.PackagingStrategy.ID != "balanced" ||
 		generated.PackagingStrategy.Description == "" {
 		t.Fatalf("expected balanced packaging strategy, got %#v", generated.PackagingStrategy)
+	}
+	stageResult, found, err := matchFixture.stageRepository.LatestStageResult(
+		context.Background(),
+		generated.RunID,
+		workflow.StageDrafted,
+	)
+	if err != nil {
+		t.Fatalf("read resume draft stage result: %v", err)
+	}
+	if !found ||
+		stageResult.Status != workflow.StageStatusSucceeded ||
+		!strings.Contains(stageResult.ResultJSON, `"resume_id"`) {
+		t.Fatalf("unexpected resume draft stage result found=%v %#v", found, stageResult)
 	}
 	if generated.Blocks[0].Evidence[0].Sources[0].DocumentName == "" {
 		t.Fatal("expected traceable resume source")
@@ -92,6 +129,7 @@ func TestResumeServiceGeneratesRestoresEditsAndPreservesLocks(t *testing.T) {
 
 	restarted := NewResumeService(
 		repository,
+		matchFixture.stageRepository,
 		matchFixture.confirmationRepository,
 		matchFixture.matchRepository,
 		matchFixture.profileRepository,
@@ -106,6 +144,75 @@ func TestResumeServiceGeneratesRestoresEditsAndPreservesLocks(t *testing.T) {
 	if restored.Status != "ready" || restored.Version != 4 ||
 		restored.Markdown != edited.Markdown {
 		t.Fatalf("unexpected restored workspace %#v", restored)
+	}
+}
+
+func TestResumeServiceRecordsDraftStageFailures(t *testing.T) {
+	tests := []struct {
+		name       string
+		drafter    ports.ResumeDrafter
+		wantStatus workflow.StageStatus
+		wantError  string
+	}{
+		{
+			name:       "failed",
+			drafter:    failingResumeDrafter{},
+			wantStatus: workflow.StageStatusFailed,
+			wantError:  "resume provider unavailable",
+		},
+		{
+			name:       "cancelled",
+			drafter:    cancelledResumeDrafter{},
+			wantStatus: workflow.StageStatusCancelled,
+			wantError:  "context canceled",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			matchFixture := newMatchServiceFixture(t, fakeprovider.New())
+			matchFixture.importProfile(t)
+			matchFixture.analyzeJD(t, matchFixture.jdText)
+			if _, err := matchFixture.service.Analyze(); err != nil {
+				t.Fatalf("analyze matches: %v", err)
+			}
+			service := NewResumeService(
+				sqliteadapter.NewResumeRepository(matchFixture.db),
+				matchFixture.stageRepository,
+				matchFixture.confirmationRepository,
+				matchFixture.matchRepository,
+				matchFixture.profileRepository,
+				matchFixture.jdRepository,
+				test.drafter,
+				fixedClock{now: profileTestTime.Add(2 * time.Hour)},
+			)
+
+			if _, err := service.Generate("zh", 0.5); err == nil {
+				t.Fatal("expected resume generation error")
+			}
+			var runID string
+			if err := matchFixture.db.QueryRow(
+				"SELECT id FROM resume_runs LIMIT 1",
+			).Scan(&runID); err != nil {
+				t.Fatalf("read resume run id: %v", err)
+			}
+			stageResult, found, err := matchFixture.stageRepository.LatestStageResult(
+				context.Background(),
+				runID,
+				workflow.StageDrafted,
+			)
+			if err != nil {
+				t.Fatalf("read resume draft stage result: %v", err)
+			}
+			if !found ||
+				stageResult.Status != test.wantStatus ||
+				!strings.Contains(stageResult.ErrorJSON, test.wantError) {
+				t.Fatalf(
+					"unexpected resume draft stage result found=%v %#v",
+					found,
+					stageResult,
+				)
+			}
+		})
 	}
 }
 
@@ -130,6 +237,7 @@ func TestResumeServiceUsesClarificationConfirmations(t *testing.T) {
 	}
 	service := NewResumeService(
 		sqliteadapter.NewResumeRepository(matchFixture.db),
+		matchFixture.stageRepository,
 		matchFixture.confirmationRepository,
 		matchFixture.matchRepository,
 		matchFixture.profileRepository,
@@ -189,6 +297,7 @@ func TestResumeServiceWarnsWhenUpstreamChangesWithLockedBlocks(t *testing.T) {
 	}
 	service := NewResumeService(
 		sqliteadapter.NewResumeRepository(matchFixture.db),
+		matchFixture.stageRepository,
 		matchFixture.confirmationRepository,
 		matchFixture.matchRepository,
 		matchFixture.profileRepository,
@@ -256,6 +365,7 @@ func TestResumeServiceUsesActiveProfile(t *testing.T) {
 	}
 	service := NewResumeService(
 		sqliteadapter.NewResumeRepository(matchFixture.db),
+		matchFixture.stageRepository,
 		matchFixture.confirmationRepository,
 		matchFixture.matchRepository,
 		matchFixture.profileRepository,
@@ -306,6 +416,7 @@ func newResumeServiceFixture(t *testing.T) *ResumeService {
 	}
 	return NewResumeService(
 		sqliteadapter.NewResumeRepository(matchFixture.db),
+		matchFixture.stageRepository,
 		matchFixture.confirmationRepository,
 		matchFixture.matchRepository,
 		matchFixture.profileRepository,

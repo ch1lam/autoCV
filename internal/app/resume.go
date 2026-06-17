@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/ch1lam/autocv/internal/domain"
 	"github.com/ch1lam/autocv/internal/ports"
@@ -18,6 +20,7 @@ import (
 
 type ResumeService struct {
 	resumeRepository       ports.ResumeRepository
+	stageRepository        ports.StageResultRepository
 	confirmationRepository ports.RunConfirmationRepository
 	matchRepository        ports.MatchRepository
 	profileRepository      ports.ProfileRepository
@@ -125,6 +128,7 @@ func (service *ResumeService) currentReadyResume(
 
 func NewResumeService(
 	resumeRepository ports.ResumeRepository,
+	stageRepository ports.StageResultRepository,
 	confirmationRepository ports.RunConfirmationRepository,
 	matchRepository ports.MatchRepository,
 	profileRepository ports.ProfileRepository,
@@ -134,6 +138,7 @@ func NewResumeService(
 ) *ResumeService {
 	return &ResumeService{
 		resumeRepository:       resumeRepository,
+		stageRepository:        stageRepository,
 		confirmationRepository: confirmationRepository,
 		matchRepository:        matchRepository,
 		profileRepository:      profileRepository,
@@ -249,25 +254,15 @@ func (service *ResumeService) Generate(
 	if blocked.Status != "" {
 		return ResumeWorkspace{}, errors.New(blocked.Message)
 	}
-	draft, err := service.drafter.DraftResume(
-		ctx,
-		ports.DraftResumeRequest{
-			Language:          resumeLanguage,
-			TargetRole:        input.role,
-			PackagingLevel:    strategy.Level,
-			PackagingStrategy: strategy,
-			Match:             input.match,
-			Evidence:          input.evidence,
-			Confirmations:     input.confirmations,
-		},
+	inputHash, err := hashResumeInput(
+		input.match,
+		input.confirmations,
+		resumeLanguage,
+		strategy,
 	)
 	if err != nil {
-		return ResumeWorkspace{}, fmt.Errorf("draft resume: %w", err)
+		return ResumeWorkspace{}, err
 	}
-	if err := domain.ValidateResumeDraft(draft, input.evidence); err != nil {
-		return ResumeWorkspace{}, fmt.Errorf("validate resume draft: %w", err)
-	}
-
 	now := service.clock.Now().UTC()
 	run, previous, found, err := service.resumeRepository.GetLatest(
 		ctx,
@@ -295,14 +290,57 @@ func (service *ResumeService) Generate(
 	if found {
 		version = previous.Version + 1
 	}
-	inputHash, err := hashResumeInput(
-		input.match,
-		input.confirmations,
-		resumeLanguage,
-		strategy,
+	if err := service.resumeRepository.SaveRun(ctx, run); err != nil {
+		return ResumeWorkspace{}, err
+	}
+	service.saveResumeDraftStageResult(
+		ctx,
+		run.ID,
+		inputHash,
+		workflow.StageStatusRunning,
+		"",
+		"",
+		now,
+	)
+	draft, err := service.drafter.DraftResume(
+		ctx,
+		ports.DraftResumeRequest{
+			Language:          resumeLanguage,
+			TargetRole:        input.role,
+			PackagingLevel:    strategy.Level,
+			PackagingStrategy: strategy,
+			Match:             input.match,
+			Evidence:          input.evidence,
+			Confirmations:     input.confirmations,
+		},
 	)
 	if err != nil {
-		return ResumeWorkspace{}, err
+		status := workflow.StageStatusFailed
+		if errors.Is(err, context.Canceled) {
+			status = workflow.StageStatusCancelled
+		}
+		service.saveResumeDraftStageResult(
+			ctx,
+			run.ID,
+			inputHash,
+			status,
+			"",
+			stageErrorJSON("resume draft failed", err),
+			service.clock.Now().UTC(),
+		)
+		return ResumeWorkspace{}, fmt.Errorf("draft resume: %w", err)
+	}
+	if err := domain.ValidateResumeDraft(draft, input.evidence); err != nil {
+		service.saveResumeDraftStageResult(
+			ctx,
+			run.ID,
+			inputHash,
+			workflow.StageStatusFailed,
+			"",
+			stageErrorJSON("resume draft failed", err),
+			service.clock.Now().UTC(),
+		)
+		return ResumeWorkspace{}, fmt.Errorf("validate resume draft: %w", err)
 	}
 	resume := domain.Resume{
 		ID:                uuid.NewString(),
@@ -325,12 +363,89 @@ func (service *ResumeService) Generate(
 	}
 	resume.Markdown = domain.RenderResumeMarkdown(resume)
 	if err := domain.ValidateResume(resume, input.evidence); err != nil {
+		service.saveResumeDraftStageResult(
+			ctx,
+			run.ID,
+			inputHash,
+			workflow.StageStatusFailed,
+			"",
+			stageErrorJSON("resume draft failed", err),
+			service.clock.Now().UTC(),
+		)
 		return ResumeWorkspace{}, fmt.Errorf("validate generated resume: %w", err)
 	}
 	if err := service.resumeRepository.SaveVersion(ctx, run, resume); err != nil {
+		service.saveResumeDraftStageResult(
+			ctx,
+			run.ID,
+			inputHash,
+			workflow.StageStatusFailed,
+			"",
+			stageErrorJSON("resume draft failed", err),
+			service.clock.Now().UTC(),
+		)
 		return ResumeWorkspace{}, err
 	}
+	service.saveResumeDraftStageResult(
+		ctx,
+		run.ID,
+		inputHash,
+		workflow.StageStatusSucceeded,
+		resumeDraftStageResultJSON(resume),
+		"",
+		now,
+	)
 	return resumeWorkspaceFrom(run, resume, input.evidence), nil
+}
+
+func (service *ResumeService) saveResumeDraftStageResult(
+	ctx context.Context,
+	runID string,
+	inputHash string,
+	status workflow.StageStatus,
+	resultJSON string,
+	errorJSON string,
+	now time.Time,
+) {
+	if service.stageRepository == nil {
+		return
+	}
+	result := workflow.StageResult{
+		ID:         stageResultID(runID, workflow.StageDrafted, inputHash),
+		RunID:      runID,
+		Stage:      workflow.StageDrafted,
+		InputHash:  inputHash,
+		Status:     status,
+		ResultJSON: resultJSON,
+		ErrorJSON:  errorJSON,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	if err := service.stageRepository.SaveStageResult(ctx, result); err != nil {
+		slog.Error(
+			"resume.stage_result.persist.failed",
+			slog.String("run_id", runID),
+			slog.String("stage", string(workflow.StageDrafted)),
+			slog.String("status", string(status)),
+			slog.Any("error", err),
+		)
+	}
+}
+
+func resumeDraftStageResultJSON(resume domain.Resume) string {
+	return stageResultJSON(struct {
+		ResumeID          string `json:"resume_id"`
+		InputHash         string `json:"input_hash"`
+		Version           int    `json:"version"`
+		BlockCount        int    `json:"block_count"`
+		OptimizationCount int    `json:"optimization_count"`
+	}{
+		ResumeID:          resume.ID,
+		InputHash:         resume.InputHash,
+		Version:           resume.Version,
+		BlockCount:        len(resume.Blocks),
+		OptimizationCount: len(resume.OptimizationNotes),
+	})
 }
 
 func (service *ResumeService) UpdateMarkdown(
