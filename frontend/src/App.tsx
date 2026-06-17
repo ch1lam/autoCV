@@ -26,6 +26,7 @@ import {
     ProviderControlService,
     ResumeService,
     SettingsService,
+    WorkflowService,
     type EvidenceSourceSummary,
     type EvidenceSummary,
     type JDWorkspace as JDWorkspaceModel,
@@ -37,6 +38,7 @@ import {
     type SaveEvidenceInput,
     type ResumeBlockSummary,
     type ResumeWorkspace,
+    type WorkflowStatus,
 } from "../bindings/github.com/ch1lam/autocv/internal/app";
 import JDWorkspace, {
     type JDWorkspaceFeedback,
@@ -130,6 +132,91 @@ const navItems = [
   { label: "PDF 预览", icon: IconFileTypePdf },
 ];
 
+const workflowStageLabels: Record<string, string> = {
+  profile_ready: "资料",
+  jd_analyzed: "JD",
+  matched: "匹配",
+  requires_user_input: "追问",
+  drafted: "生成",
+  reviewed: "审阅",
+  rendered: "PDF",
+  completed: "完成",
+};
+
+const workflowStatusLabels: Record<string, string> = {
+  pending: "待处理",
+  running: "运行中",
+  succeeded: "完成",
+  failed: "失败",
+  skipped: "跳过",
+  cancelled: "已取消",
+};
+
+function getWorkflowStageLabel(stage: string) {
+  return workflowStageLabels[stage] ?? stage;
+}
+
+function getWorkflowStatusLabel(status: string) {
+  return workflowStatusLabels[status] ?? status;
+}
+
+function WorkflowStatusCard({
+  error,
+  status,
+}: {
+  error: string;
+  status: WorkflowStatus | null;
+}) {
+  const current = status?.stages.find(
+    (stage) => stage.stage === status.currentStage,
+  );
+  const hasFailedStage =
+    status?.stages.some(
+      (stage) => stage.status === "failed" || stage.status === "cancelled",
+    ) ?? false;
+  const title = error
+    ? "状态恢复失败"
+    : !status
+      ? "恢复中"
+      : status.status === "empty"
+        ? "等待开始"
+        : `${getWorkflowStageLabel(status.currentStage)}阶段`;
+  const detail = error
+    ? error
+    : !status
+      ? "正在读取本地 Run 状态"
+      : status.status === "empty"
+        ? status.message
+        : `Run ${status.runId.slice(0, 8)} · ${getWorkflowStatusLabel(
+            current?.status ?? "pending",
+          )}`;
+
+  return (
+    <section
+      aria-label="工作流恢复状态"
+      className={`workflow-card ${
+        error || hasFailedStage ? "workflow-card--attention" : ""
+      }`}
+    >
+      <span>WORKFLOW</span>
+      <strong>{title}</strong>
+      <small>{detail}</small>
+      <ol className="workflow-stage-list">
+        {(status?.stages ?? []).map((stage) => (
+          <li
+            className={`workflow-stage-item workflow-stage-item--${stage.status}`}
+            key={stage.stage}
+            title={stage.errorMessage || getWorkflowStatusLabel(stage.status)}
+          >
+            <span aria-hidden="true" />
+            <span>{getWorkflowStageLabel(stage.stage)}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 function App() {
   const [health, setHealth] = useState<HealthState>("checking");
   const [activeNav, setActiveNav] = useState("匹配审阅");
@@ -187,6 +274,9 @@ function App() {
   const [settingsFeedback, setSettingsFeedback] =
     useState<SettingsFeedback | null>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [workflowSnapshot, setWorkflowSnapshot] =
+    useState<WorkflowStatus | null>(null);
+  const [workflowError, setWorkflowError] = useState("");
   const [isCancellingProvider, setIsCancellingProvider] = useState(false);
   const [providerRequestAction, setProviderRequestAction] =
     useState<ProviderRequestAction | null>(null);
@@ -366,6 +456,18 @@ function App() {
     }
   }, [applyProviderSettings]);
 
+  const refreshWorkflow = useCallback(async () => {
+    try {
+      const status = await WorkflowService.GetStatus();
+      setWorkflowSnapshot(status);
+      setWorkflowError("");
+    } catch (error) {
+      setWorkflowError(
+        error instanceof Error ? error.message : "工作流状态暂不可用。",
+      );
+    }
+  }, []);
+
   useEffect(() => {
     HealthService.Check()
       .then((status) => setHealth(status.status === "ready" ? "ready" : "preview"))
@@ -376,6 +478,7 @@ function App() {
     void refreshResume();
     void refreshPDF();
     void refreshSettings();
+    void refreshWorkflow();
 
     return () => {
       window.clearTimeout(noticeTimer.current);
@@ -387,6 +490,7 @@ function App() {
     refreshProfile,
     refreshResume,
     refreshSettings,
+    refreshWorkflow,
   ]);
 
   const showNotice = (message: string) => {
@@ -496,6 +600,7 @@ function App() {
       await refreshMatch();
       await refreshResume();
       await refreshPDF();
+      await refreshWorkflow();
       const mergedEvidenceCount = result.mergedEvidenceCount ?? 0;
       const conflictEvidenceCount = result.conflictEvidenceCount ?? 0;
       const hasEvidenceReview =
@@ -562,7 +667,12 @@ function App() {
     try {
       const overview = await ProfileService.SelectProfile(profileID);
       applyProfileOverview(overview);
-      await Promise.all([refreshMatch(), refreshResume(), refreshPDF()]);
+      await Promise.all([
+        refreshMatch(),
+        refreshResume(),
+        refreshPDF(),
+        refreshWorkflow(),
+      ]);
       showNotice(`已切换到 ${overview.name}`);
     } catch (error) {
       showNotice(
@@ -598,7 +708,12 @@ function App() {
       applyProfileOverview(overview);
       setCreateProfileOpen(false);
       setActiveNav("资料库");
-      await Promise.all([refreshMatch(), refreshResume(), refreshPDF()]);
+      await Promise.all([
+        refreshMatch(),
+        refreshResume(),
+        refreshPDF(),
+        refreshWorkflow(),
+      ]);
       setProfileFeedback({
         tone: "success",
         text: `已创建 ${overview.name}，可以开始导入 Markdown 资料。`,
@@ -629,7 +744,12 @@ function App() {
     try {
       const overview = await ProfileService.SaveEvidence(input);
       applyProfileOverview(overview);
-      await Promise.all([refreshMatch(), refreshResume(), refreshPDF()]);
+      await Promise.all([
+        refreshMatch(),
+        refreshResume(),
+        refreshPDF(),
+        refreshWorkflow(),
+      ]);
       setProfileFeedback({
         tone: "success",
         text: "Evidence 已保存并标记为用户确认。",
@@ -656,7 +776,12 @@ function App() {
       const overview =
         await ProfileService.ResolveEvidenceConflict(evidenceID);
       applyProfileOverview(overview);
-      await Promise.all([refreshMatch(), refreshResume(), refreshPDF()]);
+      await Promise.all([
+        refreshMatch(),
+        refreshResume(),
+        refreshPDF(),
+        refreshWorkflow(),
+      ]);
       setProfileFeedback({
         tone: "success",
         text: "已采用此 Evidence，其他冲突版本不再参与匹配与生成。",
@@ -757,6 +882,7 @@ function App() {
       await refreshMatch();
       await refreshResume();
       await refreshPDF();
+      await refreshWorkflow();
       setJDFeedback({
         tone: "success",
         text: "原始 JD 已保存；旧分析结果已失效。",
@@ -791,6 +917,7 @@ function App() {
       await refreshMatch();
       await refreshResume();
       await refreshPDF();
+      await refreshWorkflow();
       setJDFeedback({
         tone: "success",
         text: "JD 分析完成，结构化结果已通过 Go 侧校验。",
@@ -812,6 +939,7 @@ function App() {
         setJDStatus("error");
       }
       await refreshMatch();
+      await refreshWorkflow();
     } finally {
       setIsAnalyzingJD(false);
     }
@@ -831,6 +959,7 @@ function App() {
       }
       await refreshResume();
       await refreshPDF();
+      await refreshWorkflow();
     } catch (error) {
       const cancelled = isProviderCancellation(error);
       setMatchStatus(cancelled ? "ready" : "error");
@@ -851,6 +980,7 @@ function App() {
       } catch {
         setMatchStatus("error");
       }
+      await refreshWorkflow();
     } finally {
       setIsAnalyzingMatch(false);
     }
@@ -871,6 +1001,7 @@ function App() {
       showNotice("追问回答已保存。");
       await refreshResume();
       await refreshPDF();
+      await refreshWorkflow();
     } catch (error) {
       showNotice(
         error instanceof Error
@@ -891,6 +1022,7 @@ function App() {
       showNotice("已跳过该追问，相关表述会保持保守。");
       await refreshResume();
       await refreshPDF();
+      await refreshWorkflow();
     } catch (error) {
       showNotice(
         error instanceof Error
@@ -952,6 +1084,7 @@ function App() {
       setMatchStatus("ready");
       await refreshResume();
       await refreshPDF();
+      await refreshWorkflow();
       setScopeOpen(false);
       showNotice(
         review.status === "stale"
@@ -983,6 +1116,7 @@ function App() {
       );
       applyResumeWorkspace(workspace);
       await refreshPDF();
+      await refreshWorkflow();
       setGenerateOpen(false);
       setActiveNav("简历工作室");
       setResumeFeedback({
@@ -1011,6 +1145,7 @@ function App() {
       const workspace = await ResumeService.UpdateMarkdown(resumeMarkdown);
       applyResumeWorkspace(workspace);
       await refreshPDF();
+      await refreshWorkflow();
       setResumeFeedback({
         tone: "success",
         text: `Markdown 已保存为第 ${workspace.version} 版。`,
@@ -1038,6 +1173,7 @@ function App() {
       );
       applyResumeWorkspace(workspace);
       await refreshPDF();
+      await refreshWorkflow();
       setResumeFeedback({
         tone: "success",
         text: block.locked
@@ -1065,6 +1201,7 @@ function App() {
       setPDFWorkspace(workspace);
       setPDFStatus("ready");
       setPDFError("");
+      await refreshWorkflow();
       setPDFFeedback({
         tone: "success",
         text: `Resume v${workspace.version} 已生成新的 PDF Artifact。`,
@@ -1077,6 +1214,7 @@ function App() {
             ? `渲染失败：${error.message}`
             : "渲染失败，上一份成功 PDF 已保留。",
       });
+      await refreshWorkflow();
     } finally {
       setIsRenderingPDF(false);
     }
@@ -1171,6 +1309,10 @@ function App() {
             </button>
           ))}
         </nav>
+        <WorkflowStatusCard
+          error={workflowError}
+          status={workflowSnapshot}
+        />
         <button
           aria-label="设置"
           className={`nav-item nav-item--settings ${

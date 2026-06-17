@@ -23,6 +23,7 @@ const {
   generateResumeMock,
   getResumeWorkspaceMock,
   getSettingsMock,
+  getWorkflowStatusMock,
   saveJDDraftMock,
   saveEvidenceMock,
   saveProviderMock,
@@ -48,6 +49,7 @@ const {
   getPDFWorkspaceMock: vi.fn(),
   getResumeWorkspaceMock: vi.fn(),
   getSettingsMock: vi.fn(),
+  getWorkflowStatusMock: vi.fn(),
   importMarkdownMock: vi.fn(),
   renderPDFMock: vi.fn(),
   resolveEvidenceConflictMock: vi.fn(),
@@ -106,6 +108,9 @@ vi.mock("../bindings/github.com/ch1lam/autocv/internal/app", () => ({
   SettingsService: {
     GetSettings: getSettingsMock,
     SaveProvider: saveProviderMock,
+  },
+  WorkflowService: {
+    GetStatus: getWorkflowStatusMock,
   },
 }));
 
@@ -418,6 +423,89 @@ const matchReview = {
   ],
 };
 
+const workflowStatus = {
+  status: "ready",
+  message: "已恢复最近一次 Resume Run 状态。",
+  runId: "run-12345678",
+  runStatus: "active",
+  currentStage: "requires_user_input",
+  updatedAt: "2026-06-11T03:00:00Z",
+  stages: [
+    {
+      stage: "profile_ready",
+      status: "pending",
+      inputHash: "",
+      hasResult: false,
+      hasError: false,
+      errorMessage: "",
+      updatedAt: "",
+    },
+    {
+      stage: "jd_analyzed",
+      status: "pending",
+      inputHash: "",
+      hasResult: false,
+      hasError: false,
+      errorMessage: "",
+      updatedAt: "",
+    },
+    {
+      stage: "matched",
+      status: "succeeded",
+      inputHash: "match-hash",
+      hasResult: true,
+      hasError: false,
+      errorMessage: "",
+      updatedAt: "2026-06-11T03:00:00Z",
+    },
+    {
+      stage: "requires_user_input",
+      status: "pending",
+      inputHash: "",
+      hasResult: false,
+      hasError: false,
+      errorMessage: "",
+      updatedAt: "",
+    },
+    {
+      stage: "drafted",
+      status: "failed",
+      inputHash: "draft-hash",
+      hasResult: false,
+      hasError: true,
+      errorMessage: "resume draft failed",
+      updatedAt: "2026-06-11T04:00:00Z",
+    },
+    {
+      stage: "reviewed",
+      status: "pending",
+      inputHash: "",
+      hasResult: false,
+      hasError: false,
+      errorMessage: "",
+      updatedAt: "",
+    },
+    {
+      stage: "rendered",
+      status: "pending",
+      inputHash: "",
+      hasResult: false,
+      hasError: false,
+      errorMessage: "",
+      updatedAt: "",
+    },
+    {
+      stage: "completed",
+      status: "pending",
+      inputHash: "",
+      hasResult: false,
+      hasError: false,
+      errorMessage: "",
+      updatedAt: "",
+    },
+  ],
+};
+
 const resumeWorkspace = {
   status: "ready",
   message: "结构化简历、Markdown 与来源引用已保存到本地。",
@@ -557,6 +645,7 @@ describe("Paper Trail match review", () => {
     getPDFWorkspaceMock.mockReset().mockResolvedValue(pdfWorkspace);
     getResumeWorkspaceMock.mockReset().mockResolvedValue(resumeWorkspace);
     getSettingsMock.mockReset().mockResolvedValue(providerSettings);
+    getWorkflowStatusMock.mockReset().mockResolvedValue(workflowStatus);
     generateResumeMock.mockReset().mockResolvedValue(resumeWorkspace);
     updateResumeMarkdownMock.mockReset().mockImplementation((markdown) =>
       Promise.resolve({
@@ -680,6 +769,19 @@ describe("Paper Trail match review", () => {
     expect(
       within(inspector).getByText("Go 经验有多处直接证据。"),
     ).toBeInTheDocument();
+  });
+
+  it("restores workflow stage status through the query service", async () => {
+    render(<App />);
+
+    const workflowCard = await screen.findByRole("region", {
+      name: "工作流恢复状态",
+    });
+    expect(getWorkflowStatusMock).toHaveBeenCalled();
+    expect(within(workflowCard).getByText("追问阶段")).toBeInTheDocument();
+    expect(within(workflowCard).getByText(/Run run-1234/)).toBeInTheDocument();
+    expect(within(workflowCard).getByText("匹配")).toBeInTheDocument();
+    expect(within(workflowCard).getByText("生成")).toBeInTheDocument();
   });
 
   it("rebuilds stale match results through the Go service", async () => {

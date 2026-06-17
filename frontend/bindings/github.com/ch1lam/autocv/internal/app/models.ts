@@ -1459,6 +1459,100 @@ export class SourceDocumentSummary {
     }
 }
 
+export class WorkflowStageSummary {
+    "stage": string;
+    "status": string;
+    "inputHash": string;
+    "hasResult": boolean;
+    "hasError": boolean;
+    "errorMessage": string;
+    "updatedAt": string;
+
+    /** Creates a new WorkflowStageSummary instance. */
+    constructor($$source: Partial<WorkflowStageSummary> = {}) {
+        if (!("stage" in $$source)) {
+            this["stage"] = "";
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("inputHash" in $$source)) {
+            this["inputHash"] = "";
+        }
+        if (!("hasResult" in $$source)) {
+            this["hasResult"] = false;
+        }
+        if (!("hasError" in $$source)) {
+            this["hasError"] = false;
+        }
+        if (!("errorMessage" in $$source)) {
+            this["errorMessage"] = "";
+        }
+        if (!("updatedAt" in $$source)) {
+            this["updatedAt"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new WorkflowStageSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): WorkflowStageSummary {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new WorkflowStageSummary($$parsedSource as Partial<WorkflowStageSummary>);
+    }
+}
+
+export class WorkflowStatus {
+    "status": string;
+    "message": string;
+    "runId": string;
+    "runStatus": string;
+    "currentStage": string;
+    "updatedAt": string;
+    "stages": WorkflowStageSummary[];
+
+    /** Creates a new WorkflowStatus instance. */
+    constructor($$source: Partial<WorkflowStatus> = {}) {
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+        if (!("runId" in $$source)) {
+            this["runId"] = "";
+        }
+        if (!("runStatus" in $$source)) {
+            this["runStatus"] = "";
+        }
+        if (!("currentStage" in $$source)) {
+            this["currentStage"] = "";
+        }
+        if (!("updatedAt" in $$source)) {
+            this["updatedAt"] = "";
+        }
+        if (!("stages" in $$source)) {
+            this["stages"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new WorkflowStatus instance from a string or object.
+     */
+    static createFrom($$source: any = {}): WorkflowStatus {
+        const $$createField6_0 = $$createType33;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("stages" in $$parsedSource) {
+            $$parsedSource["stages"] = $$createField6_0($$parsedSource["stages"]);
+        }
+        return new WorkflowStatus($$parsedSource as Partial<WorkflowStatus>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = $Create.Array($Create.Any);
 const $$createType1 = EvidenceSourceSummary.createFrom;
@@ -1492,3 +1586,5 @@ const $$createType28 = ResumeBlockSummary.createFrom;
 const $$createType29 = $Create.Array($$createType28);
 const $$createType30 = RunScopeDocumentSummary.createFrom;
 const $$createType31 = $Create.Array($$createType30);
+const $$createType32 = WorkflowStageSummary.createFrom;
+const $$createType33 = $Create.Array($$createType32);

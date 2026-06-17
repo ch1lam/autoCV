@@ -9,6 +9,7 @@ import * as ProfileService from "./profileservice.js";
 import * as ProviderControlService from "./providercontrolservice.js";
 import * as ResumeService from "./resumeservice.js";
 import * as SettingsService from "./settingsservice.js";
+import * as WorkflowService from "./workflowservice.js";
 export {
     HealthService,
     JDService,
@@ -17,7 +18,8 @@ export {
     ProfileService,
     ProviderControlService,
     ResumeService,
-    SettingsService
+    SettingsService,
+    WorkflowService
 };
 
 export {
@@ -50,5 +52,7 @@ export {
     RunScopeSummary,
     SaveEvidenceInput,
     SaveProviderInput,
-    SourceDocumentSummary
+    SourceDocumentSummary,
+    WorkflowStageSummary,
+    WorkflowStatus
 } from "./models.js";

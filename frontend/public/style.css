@@ -150,6 +150,91 @@ button:focus-visible {
   transform: scaleY(1);
 }
 
+.workflow-card {
+  margin: 0 14px 18px;
+  padding: 14px 13px 15px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fffefa;
+  box-shadow: 0 12px 26px rgb(70 64 52 / 7%);
+}
+
+.workflow-card > span {
+  color: var(--blue);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.13em;
+}
+
+.workflow-card strong {
+  display: block;
+  margin-top: 7px;
+  color: #2f2d28;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.workflow-card small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.workflow-card--attention > span,
+.workflow-card--attention .workflow-stage-item--failed,
+.workflow-card--attention .workflow-stage-item--cancelled {
+  color: var(--red);
+}
+
+.workflow-stage-list {
+  display: grid;
+  gap: 7px;
+  margin: 13px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workflow-stage-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.workflow-stage-item > span:first-child {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border: 1px solid #d2ccbf;
+  border-radius: 50%;
+  background: #eeeae1;
+}
+
+.workflow-stage-item--running > span:first-child {
+  border-color: var(--blue);
+  background: var(--blue);
+  box-shadow: 0 0 0 4px rgb(46 104 217 / 12%);
+}
+
+.workflow-stage-item--succeeded {
+  color: #365b45;
+}
+
+.workflow-stage-item--succeeded > span:first-child {
+  border-color: var(--green);
+  background: var(--green);
+}
+
+.workflow-stage-item--failed > span:first-child,
+.workflow-stage-item--cancelled > span:first-child {
+  border-color: var(--red);
+  background: var(--red);
+}
+
 .nav-item--settings {
   width: calc(100% - 28px);
   margin: auto 14px 26px;
@@ -4441,6 +4526,10 @@ button:focus-visible {
   }
 
   .nav-item span {
+    display: none;
+  }
+
+  .workflow-card {
     display: none;
   }
 
