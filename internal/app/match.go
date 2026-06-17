@@ -447,6 +447,29 @@ func (service *MatchService) updateClarification(
 		}
 		return MatchReview{}, err
 	}
+	if status == domain.ClarificationSkipped {
+		var lowered bool
+		analysis, lowered = lowerSkippedMatchSuggestion(
+			analysis,
+			target.RequirementID,
+			now,
+		)
+		if lowered {
+			if err := domain.ValidateMatchSuggestions(
+				analysis.Requirements,
+				input.evidence,
+				analysis.Suggestions,
+			); err != nil {
+				return MatchReview{}, fmt.Errorf(
+					"validate lowered match suggestion: %w",
+					err,
+				)
+			}
+			if err := service.matchRepository.Save(ctx, analysis); err != nil {
+				return MatchReview{}, err
+			}
+		}
+	}
 	questions, err = service.clarificationRepository.ListQuestions(ctx, runID)
 	if err != nil {
 		return MatchReview{}, err
@@ -494,6 +517,53 @@ func (service *MatchService) saveRunConfirmation(
 	default:
 		return domain.ValidateClarificationResponse(status, answer)
 	}
+}
+
+func lowerSkippedMatchSuggestion(
+	analysis domain.MatchAnalysis,
+	requirementID string,
+	now time.Time,
+) (domain.MatchAnalysis, bool) {
+	updated := analysis
+	updated.Suggestions = append(
+		[]domain.MatchSuggestion(nil),
+		analysis.Suggestions...,
+	)
+	for index, suggestion := range updated.Suggestions {
+		if suggestion.RequirementID != requirementID {
+			continue
+		}
+		if suggestion.Strength == domain.MatchStrengthMissing &&
+			!suggestion.ClarificationNeeded &&
+			len(suggestion.EvidenceIDs) == 0 &&
+			strings.Contains(suggestion.Explanation, skippedClarificationNote) {
+			return analysis, false
+		}
+		suggestion.Strength = domain.MatchStrengthMissing
+		suggestion.EvidenceIDs = nil
+		suggestion.ClarificationNeeded = false
+		suggestion.Explanation = appendSkippedClarificationNote(
+			suggestion.Explanation,
+		)
+		updated.Suggestions[index] = suggestion
+		updated.UpdatedAt = now
+		return updated, true
+	}
+	return analysis, false
+}
+
+const skippedClarificationNote = "用户跳过了该要求的追问，系统按未确认缺口处理。"
+
+func appendSkippedClarificationNote(explanation string) string {
+	explanation = strings.TrimSpace(explanation)
+	if strings.Contains(explanation, skippedClarificationNote) {
+		return explanation
+	}
+	if explanation == "" {
+		return skippedClarificationNote
+	}
+	return strings.TrimRight(explanation, "。.!！?？;；") +
+		"；" + skippedClarificationNote
 }
 
 func (service *MatchService) currentReadyMatchAnalysis(

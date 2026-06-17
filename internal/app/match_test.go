@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -52,6 +53,26 @@ func (allClarificationSuggester) SuggestMatches(
 			RequirementID:       requirement.ID,
 			Strength:            domain.MatchStrengthMissing,
 			Explanation:         "当前资料缺少直接证据。",
+			ClarificationNeeded: true,
+		})
+	}
+	return suggestions, nil
+}
+
+type partialClarificationSuggester struct{}
+
+func (partialClarificationSuggester) SuggestMatches(
+	_ context.Context,
+	request ports.SuggestMatchesRequest,
+) ([]domain.MatchSuggestion, error) {
+	suggestions := make([]domain.MatchSuggestion, 0, len(request.Requirements))
+	evidenceID := request.Evidence[0].ID
+	for _, requirement := range request.Requirements {
+		suggestions = append(suggestions, domain.MatchSuggestion{
+			RequirementID:       requirement.ID,
+			Strength:            domain.MatchStrengthPartial,
+			EvidenceIDs:         []string{evidenceID},
+			Explanation:         "有相关线索，但需要用户确认职责范围。",
 			ClarificationNeeded: true,
 		})
 	}
@@ -126,6 +147,53 @@ func TestMatchServiceAnalyzesScoresAndRestoresReview(t *testing.T) {
 		len(restored.Requirements) != len(review.Requirements) ||
 		len(restored.Clarifications) != len(review.Clarifications) {
 		t.Fatalf("unexpected restored review %#v", restored)
+	}
+}
+
+func TestMatchServiceSkipClarificationLowersSuggestionStrength(t *testing.T) {
+	fixture := newMatchServiceFixture(t, partialClarificationSuggester{})
+	fixture.importProfile(t)
+	fixture.analyzeJD(t, fixture.jdText)
+
+	review, err := fixture.service.Analyze()
+	if err != nil {
+		t.Fatalf("analyze matches: %v", err)
+	}
+	if review.Counts.Partial == 0 || len(review.Clarifications) == 0 {
+		t.Fatalf("expected partial clarifications, got %#v", review)
+	}
+	skippedRequirementID := review.Clarifications[0].RequirementID
+	review, err = fixture.service.SkipClarification(review.Clarifications[0].ID)
+	if err != nil {
+		t.Fatalf("skip clarification: %v", err)
+	}
+
+	var skipped RequirementMatchSummary
+	for _, requirement := range review.Requirements {
+		if requirement.ID == skippedRequirementID {
+			skipped = requirement
+			break
+		}
+	}
+	if skipped.ID == "" {
+		t.Fatalf("skipped requirement %q not found", skippedRequirementID)
+	}
+	if skipped.Strength != string(domain.MatchStrengthMissing) ||
+		skipped.ClarificationNeeded ||
+		len(skipped.Evidence) != 0 ||
+		!strings.Contains(skipped.Explanation, "跳过") {
+		t.Fatalf("expected skipped requirement to lower strength, got %#v", skipped)
+	}
+
+	restored, err := fixture.service.GetReview()
+	if err != nil {
+		t.Fatalf("restore lowered review: %v", err)
+	}
+	for _, requirement := range restored.Requirements {
+		if requirement.ID == skippedRequirementID &&
+			requirement.Strength != string(domain.MatchStrengthMissing) {
+			t.Fatalf("expected lowered match to persist, got %#v", requirement)
+		}
 	}
 }
 
