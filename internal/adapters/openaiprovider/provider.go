@@ -399,6 +399,12 @@ type matchSuggestionPayload struct {
 	ClarificationNeeded bool     `json:"clarification_needed"`
 }
 
+type runConfirmationPayload struct {
+	ID            string `json:"id"`
+	RequirementID string `json:"requirement_id"`
+	Content       string `json:"content"`
+}
+
 func resumeRequestPayload(
 	request ports.DraftResumeRequest,
 ) struct {
@@ -408,6 +414,7 @@ func resumeRequestPayload(
 	Requirements   []matchRequirementPayload `json:"requirements"`
 	Suggestions    []matchSuggestionPayload  `json:"suggestions"`
 	Evidence       []evidencePayload         `json:"evidence"`
+	Confirmations  []runConfirmationPayload  `json:"confirmations"`
 } {
 	requirements := make(
 		[]matchRequirementPayload,
@@ -437,6 +444,18 @@ func resumeRequestPayload(
 			ClarificationNeeded: suggestion.ClarificationNeeded,
 		})
 	}
+	confirmations := make(
+		[]runConfirmationPayload,
+		0,
+		len(request.Confirmations),
+	)
+	for _, confirmation := range request.Confirmations {
+		confirmations = append(confirmations, runConfirmationPayload{
+			ID:            confirmation.ID,
+			RequirementID: confirmation.RequirementID,
+			Content:       confirmation.Content,
+		})
+	}
 	return struct {
 		Language       string                    `json:"language"`
 		TargetRole     string                    `json:"target_role"`
@@ -444,6 +463,7 @@ func resumeRequestPayload(
 		Requirements   []matchRequirementPayload `json:"requirements"`
 		Suggestions    []matchSuggestionPayload  `json:"suggestions"`
 		Evidence       []evidencePayload         `json:"evidence"`
+		Confirmations  []runConfirmationPayload  `json:"confirmations"`
 	}{
 		Language:       string(request.Language),
 		TargetRole:     request.TargetRole,
@@ -451,6 +471,7 @@ func resumeRequestPayload(
 		Requirements:   requirements,
 		Suggestions:    suggestions,
 		Evidence:       evidencePayloads(request.Evidence),
+		Confirmations:  confirmations,
 	}
 }
 

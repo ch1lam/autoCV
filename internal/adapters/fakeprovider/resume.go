@@ -36,9 +36,10 @@ func (provider *Provider) DraftResume(
 	}
 
 	ranked := rankResumeEvidence(request.Match, request.Evidence)
-	if len(ranked) == 0 {
+	confirmations := usableRunConfirmations(request.Confirmations)
+	if len(ranked) == 0 && len(confirmations) == 0 {
 		return domain.ResumeDraft{}, errors.New(
-			"match analysis has no grounded evidence for resume drafting",
+			"match analysis has no grounded evidence or user confirmations for resume drafting",
 		)
 	}
 	limit := 4 + int(request.PackagingLevel*4)
@@ -53,6 +54,12 @@ func (provider *Provider) DraftResume(
 		sourceIDs = append(sourceIDs, ranked[index].evidence.ID)
 		titles = append(titles, ranked[index].evidence.Title)
 	}
+	summaryGrounding := domain.GroundingDerived
+	summaryOptimization := "用最高相关度的来源概括候选人与目标岗位的连接。"
+	if len(sourceIDs) == 0 {
+		summaryGrounding = domain.GroundingUserConfirmed
+		summaryOptimization = "用用户确认的追问回答概括候选人与目标岗位的连接。"
+	}
 
 	draft := domain.ResumeDraft{
 		Language:   request.Language,
@@ -61,8 +68,8 @@ func (provider *Provider) DraftResume(
 			Kind:              domain.ResumeBlockSummary,
 			Content:           fakeResumeSummary(request.Language, titles),
 			SourceEvidenceIDs: sourceIDs,
-			GroundingLevel:    domain.GroundingDerived,
-			Optimization:      "用最高相关度的来源概括候选人与目标岗位的连接。",
+			GroundingLevel:    summaryGrounding,
+			Optimization:      summaryOptimization,
 		}},
 		OptimizationNotes: []string{
 			fmt.Sprintf(
@@ -71,6 +78,15 @@ func (provider *Provider) DraftResume(
 			),
 			"缺失和未知要求未写入简历，具体数字仅保留来源中已有的内容。",
 		},
+	}
+	if len(confirmations) > 0 {
+		draft.OptimizationNotes = append(
+			draft.OptimizationNotes,
+			fmt.Sprintf(
+				"纳入 %d 条追问回答作为用户确认内容。",
+				len(confirmations),
+			),
+		)
 	}
 	for _, item := range ranked {
 		draft.Blocks = append(draft.Blocks, domain.ResumeBlockDraft{
@@ -82,6 +98,15 @@ func (provider *Provider) DraftResume(
 				"对应 %s，保留来源原意并提高展示顺序。",
 				strings.Join(item.reasons, "、"),
 			),
+		})
+	}
+	for _, confirmation := range confirmations {
+		draft.Blocks = append(draft.Blocks, domain.ResumeBlockDraft{
+			Kind:              domain.ResumeBlockExperience,
+			Content:           strings.TrimSpace(confirmation.Content),
+			SourceEvidenceIDs: []string{},
+			GroundingLevel:    domain.GroundingUserConfirmed,
+			Optimization:      "来自追问回答，作为用户确认事实纳入简历草稿。",
 		})
 	}
 	if err := domain.ValidateResumeDraft(draft, request.Evidence); err != nil {
@@ -157,19 +182,48 @@ func rankResumeEvidence(
 	return ranked
 }
 
+func usableRunConfirmations(
+	confirmations []domain.RunConfirmation,
+) []domain.RunConfirmation {
+	result := make([]domain.RunConfirmation, 0, len(confirmations))
+	for _, confirmation := range confirmations {
+		confirmation.Content = strings.TrimSpace(confirmation.Content)
+		if confirmation.Content == "" {
+			continue
+		}
+		result = append(result, confirmation)
+	}
+	sort.SliceStable(result, func(left int, right int) bool {
+		leftConfirmation := result[left]
+		rightConfirmation := result[right]
+		if leftConfirmation.CreatedAt.Equal(rightConfirmation.CreatedAt) {
+			return leftConfirmation.ID < rightConfirmation.ID
+		}
+		return leftConfirmation.CreatedAt.Before(rightConfirmation.CreatedAt)
+	})
+	return result
+}
+
 func fakeResumeSummary(
 	language domain.ResumeLanguage,
 	titles []string,
 ) string {
 	normalized := make([]string, 0, len(titles))
 	for _, title := range titles {
-		normalized = append(
-			normalized,
-			strings.TrimRight(
-				strings.TrimSpace(title),
-				"。.!！?？;；",
-			),
+		normalizedTitle := strings.TrimRight(
+			strings.TrimSpace(title),
+			"。.!！?？;；",
 		)
+		if normalizedTitle == "" {
+			continue
+		}
+		normalized = append(normalized, normalizedTitle)
+	}
+	if len(normalized) == 0 {
+		if language == domain.ResumeLanguageEnglish {
+			return "User-confirmed details are included for the target role."
+		}
+		return "围绕目标岗位，纳入用户确认的补充经历。"
 	}
 	joined := strings.Join(normalized, "、")
 	if language == domain.ResumeLanguageEnglish {

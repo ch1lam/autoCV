@@ -17,12 +17,13 @@ import (
 )
 
 type ResumeService struct {
-	resumeRepository  ports.ResumeRepository
-	matchRepository   ports.MatchRepository
-	profileRepository ports.ProfileRepository
-	jdRepository      ports.JDRepository
-	drafter           ports.ResumeDrafter
-	clock             ports.Clock
+	resumeRepository       ports.ResumeRepository
+	confirmationRepository ports.RunConfirmationRepository
+	matchRepository        ports.MatchRepository
+	profileRepository      ports.ProfileRepository
+	jdRepository           ports.JDRepository
+	drafter                ports.ResumeDrafter
+	clock                  ports.Clock
 }
 
 type ResumeWorkspace struct {
@@ -55,11 +56,12 @@ type ResumeBlockSummary struct {
 }
 
 type preparedResumeInput struct {
-	profile  domain.Profile
-	jd       domain.JobDescription
-	match    domain.MatchAnalysis
-	evidence []domain.Evidence
-	role     string
+	profile       domain.Profile
+	jd            domain.JobDescription
+	match         domain.MatchAnalysis
+	evidence      []domain.Evidence
+	confirmations []domain.RunConfirmation
+	role          string
 }
 
 func (service *ResumeService) currentReadyResume(
@@ -88,6 +90,7 @@ func (service *ResumeService) currentReadyResume(
 	}
 	expectedHash, err := hashResumeInput(
 		input.match,
+		input.confirmations,
 		run.Language,
 		run.PackagingLevel,
 	)
@@ -110,6 +113,7 @@ func (service *ResumeService) currentReadyResume(
 
 func NewResumeService(
 	resumeRepository ports.ResumeRepository,
+	confirmationRepository ports.RunConfirmationRepository,
 	matchRepository ports.MatchRepository,
 	profileRepository ports.ProfileRepository,
 	jdRepository ports.JDRepository,
@@ -117,12 +121,13 @@ func NewResumeService(
 	clock ports.Clock,
 ) *ResumeService {
 	return &ResumeService{
-		resumeRepository:  resumeRepository,
-		matchRepository:   matchRepository,
-		profileRepository: profileRepository,
-		jdRepository:      jdRepository,
-		drafter:           drafter,
-		clock:             clock,
+		resumeRepository:       resumeRepository,
+		confirmationRepository: confirmationRepository,
+		matchRepository:        matchRepository,
+		profileRepository:      profileRepository,
+		jdRepository:           jdRepository,
+		drafter:                drafter,
+		clock:                  clock,
 	}
 }
 
@@ -155,6 +160,7 @@ func (service *ResumeService) GetWorkspace() (ResumeWorkspace, error) {
 	}
 	expectedHash, err := hashResumeInput(
 		input.match,
+		input.confirmations,
 		run.Language,
 		run.PackagingLevel,
 	)
@@ -162,17 +168,17 @@ func (service *ResumeService) GetWorkspace() (ResumeWorkspace, error) {
 		return ResumeWorkspace{}, err
 	}
 	if resume.InputHash != expectedHash {
-		message := "资料、JD 或匹配结果已变化，请重新生成未锁定内容。"
+		message := "资料、JD、匹配结果或追问确认已变化，请重新生成未锁定内容。"
 		if lockedCount := lockedResumeBlockCount(resume.Blocks); lockedCount > 0 {
 			message = fmt.Sprintf(
-				"资料、JD 或匹配结果已变化；%d 个锁定 Block 不会自动改写，请确认它们仍适合当前岗位后再重新生成。",
+				"资料、JD、匹配结果或追问确认已变化；%d 个锁定 Block 不会自动改写，请确认它们仍适合当前岗位后再重新生成。",
 				lockedCount,
 			)
 		}
 		return ResumeWorkspace{
 			Status:            "stale",
 			Message:           message,
-			ExportIssues:      []string{"资料、JD 或匹配结果已变化，请先重新生成当前版本。"},
+			ExportIssues:      []string{"资料、JD、匹配结果或追问确认已变化，请先重新生成当前版本。"},
 			RunID:             run.ID,
 			ResumeID:          resume.ID,
 			Version:           resume.Version,
@@ -230,6 +236,7 @@ func (service *ResumeService) Generate(
 			PackagingLevel: packagingLevel,
 			Match:          input.match,
 			Evidence:       input.evidence,
+			Confirmations:  input.confirmations,
 		},
 	)
 	if err != nil {
@@ -268,6 +275,7 @@ func (service *ResumeService) Generate(
 	}
 	inputHash, err := hashResumeInput(
 		input.match,
+		input.confirmations,
 		resumeLanguage,
 		packagingLevel,
 	)
@@ -363,6 +371,7 @@ func (service *ResumeService) updateCurrentResume(
 	}
 	expectedHash, err := hashResumeInput(
 		input.match,
+		input.confirmations,
 		run.Language,
 		run.PackagingLevel,
 	)
@@ -497,21 +506,30 @@ func (service *ResumeService) prepareInput(
 			err,
 		)
 	}
+	confirmations, err := service.confirmationRepository.ListRunConfirmations(
+		ctx,
+		resumeRunID(profile.ID, jd.ID),
+	)
+	if err != nil {
+		return preparedResumeInput{}, ResumeWorkspace{}, err
+	}
 	role := strings.TrimSpace(jdAnalysis.Role)
 	if role == "" {
 		role = strings.TrimSpace(jd.Title)
 	}
 	return preparedResumeInput{
-		profile:  profile,
-		jd:       jd,
-		match:    match,
-		evidence: evidence,
-		role:     role,
+		profile:       profile,
+		jd:            jd,
+		match:         match,
+		evidence:      evidence,
+		confirmations: confirmations,
+		role:          role,
 	}, ResumeWorkspace{}, nil
 }
 
 func hashResumeInput(
 	match domain.MatchAnalysis,
+	confirmations []domain.RunConfirmation,
 	language domain.ResumeLanguage,
 	packagingLevel float64,
 ) (string, error) {
@@ -520,6 +538,7 @@ func hashResumeInput(
 		MatchInput     string
 		Requirements   []domain.MatchRequirement
 		Suggestions    []domain.MatchSuggestion
+		Confirmations  []domain.RunConfirmation
 		Language       domain.ResumeLanguage
 		PackagingLevel float64
 	}{
@@ -527,6 +546,7 @@ func hashResumeInput(
 		MatchInput:     match.InputHash,
 		Requirements:   match.Requirements,
 		Suggestions:    match.Suggestions,
+		Confirmations:  confirmations,
 		Language:       language,
 		PackagingLevel: packagingLevel,
 	})

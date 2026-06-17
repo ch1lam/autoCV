@@ -187,6 +187,7 @@ func TestPDFServiceBlocksExportForUnconfirmedContent(t *testing.T) {
 	}
 	resumes := NewResumeService(
 		sqliteadapter.NewResumeRepository(matchFixture.db),
+		matchFixture.confirmationRepository,
 		matchFixture.matchRepository,
 		matchFixture.profileRepository,
 		matchFixture.jdRepository,

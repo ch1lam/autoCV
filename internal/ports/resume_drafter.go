@@ -12,6 +12,7 @@ type DraftResumeRequest struct {
 	PackagingLevel float64
 	Match          domain.MatchAnalysis
 	Evidence       []domain.Evidence
+	Confirmations  []domain.RunConfirmation
 }
 
 type ResumeDrafter interface {

@@ -131,6 +131,7 @@ func testM1SyntheticScenario(
 	resumeRepository := sqliteadapter.NewResumeRepository(fixture.db)
 	resumeService := NewResumeService(
 		resumeRepository,
+		fixture.confirmationRepository,
 		fixture.matchRepository,
 		fixture.profileRepository,
 		fixture.jdRepository,
@@ -183,6 +184,7 @@ func testM1SyntheticScenario(
 	)
 	restartedResume := NewResumeService(
 		resumeRepository,
+		fixture.confirmationRepository,
 		fixture.matchRepository,
 		fixture.profileRepository,
 		fixture.jdRepository,

@@ -2,6 +2,7 @@ package openaiprovider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -192,6 +193,52 @@ func TestProviderRejectsResultWhenMetadataCannotPersist(t *testing.T) {
 		},
 	); err == nil {
 		t.Fatal("expected metadata persistence failure")
+	}
+}
+
+func TestResumeRequestPayloadIncludesConfirmations(t *testing.T) {
+	payload := resumeRequestPayload(ports.DraftResumeRequest{
+		Language:       domain.ResumeLanguageChinese,
+		TargetRole:     "后端工程师",
+		PackagingLevel: 0.5,
+		Match: domain.MatchAnalysis{
+			Requirements: []domain.MatchRequirement{{
+				ID:         "required-team",
+				Text:       "团队协作",
+				Importance: 4,
+			}},
+			Suggestions: []domain.MatchSuggestion{{
+				RequirementID:       "required-team",
+				Strength:            domain.MatchStrengthMissing,
+				Explanation:         "资料中缺少团队规模。",
+				ClarificationNeeded: true,
+			}},
+		},
+		Confirmations: []domain.RunConfirmation{{
+			ID:            "confirmation-1",
+			RequirementID: "required-team",
+			Content:       "负责 8 人后端团队。",
+		}},
+	})
+	contents, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("encode resume payload: %v", err)
+	}
+	var decoded struct {
+		Confirmations []struct {
+			ID            string `json:"id"`
+			RequirementID string `json:"requirement_id"`
+			Content       string `json:"content"`
+		} `json:"confirmations"`
+	}
+	if err := json.Unmarshal(contents, &decoded); err != nil {
+		t.Fatalf("decode resume payload: %v", err)
+	}
+	if len(decoded.Confirmations) != 1 ||
+		decoded.Confirmations[0].ID != "confirmation-1" ||
+		decoded.Confirmations[0].RequirementID != "required-team" ||
+		decoded.Confirmations[0].Content != "负责 8 人后端团队。" {
+		t.Fatalf("unexpected confirmations payload %#v", decoded.Confirmations)
 	}
 }
 

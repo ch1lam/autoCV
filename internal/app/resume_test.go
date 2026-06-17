@@ -22,6 +22,7 @@ func TestResumeServiceGeneratesRestoresEditsAndPreservesLocks(t *testing.T) {
 	)
 	service := NewResumeService(
 		repository,
+		matchFixture.confirmationRepository,
 		matchFixture.matchRepository,
 		matchFixture.profileRepository,
 		matchFixture.jdRepository,
@@ -87,6 +88,7 @@ func TestResumeServiceGeneratesRestoresEditsAndPreservesLocks(t *testing.T) {
 
 	restarted := NewResumeService(
 		repository,
+		matchFixture.confirmationRepository,
 		matchFixture.matchRepository,
 		matchFixture.profileRepository,
 		matchFixture.jdRepository,
@@ -100,6 +102,64 @@ func TestResumeServiceGeneratesRestoresEditsAndPreservesLocks(t *testing.T) {
 	if restored.Status != "ready" || restored.Version != 4 ||
 		restored.Markdown != edited.Markdown {
 		t.Fatalf("unexpected restored workspace %#v", restored)
+	}
+}
+
+func TestResumeServiceUsesClarificationConfirmations(t *testing.T) {
+	matchFixture := newMatchServiceFixture(t, allClarificationSuggester{})
+	matchFixture.importProfile(t)
+	matchFixture.analyzeJD(t, matchFixture.jdText)
+	review, err := matchFixture.service.Analyze()
+	if err != nil {
+		t.Fatalf("analyze matches: %v", err)
+	}
+	if len(review.Clarifications) < 2 {
+		t.Fatalf("expected clarification questions, got %#v", review.Clarifications)
+	}
+
+	answer := "负责 8 人后端团队和跨部门交付。"
+	if _, err := matchFixture.service.AnswerClarification(
+		review.Clarifications[0].ID,
+		answer,
+	); err != nil {
+		t.Fatalf("answer clarification: %v", err)
+	}
+	service := NewResumeService(
+		sqliteadapter.NewResumeRepository(matchFixture.db),
+		matchFixture.confirmationRepository,
+		matchFixture.matchRepository,
+		matchFixture.profileRepository,
+		matchFixture.jdRepository,
+		fakeprovider.New(),
+		fixedClock{now: profileTestTime.Add(2 * time.Hour)},
+	)
+	generated, err := service.Generate("zh", 0.5)
+	if err != nil {
+		t.Fatalf("generate resume with confirmation: %v", err)
+	}
+	if !slices.ContainsFunc(
+		generated.Blocks,
+		func(block ResumeBlockSummary) bool {
+			return block.GroundingLevel == "user_confirmed" &&
+				block.Content == answer
+		},
+	) {
+		t.Fatalf("expected user-confirmed block, got %#v", generated.Blocks)
+	}
+
+	if _, err := matchFixture.service.AnswerClarification(
+		review.Clarifications[1].ID,
+		"补充第二条用户确认。",
+	); err != nil {
+		t.Fatalf("answer second clarification: %v", err)
+	}
+	stale, err := service.GetWorkspace()
+	if err != nil {
+		t.Fatalf("get stale resume after confirmation change: %v", err)
+	}
+	if stale.Status != "stale" ||
+		!strings.Contains(stale.Message, "追问确认") {
+		t.Fatalf("expected confirmation change to stale resume, got %#v", stale)
 	}
 }
 
@@ -125,6 +185,7 @@ func TestResumeServiceWarnsWhenUpstreamChangesWithLockedBlocks(t *testing.T) {
 	}
 	service := NewResumeService(
 		sqliteadapter.NewResumeRepository(matchFixture.db),
+		matchFixture.confirmationRepository,
 		matchFixture.matchRepository,
 		matchFixture.profileRepository,
 		matchFixture.jdRepository,
@@ -191,6 +252,7 @@ func TestResumeServiceUsesActiveProfile(t *testing.T) {
 	}
 	service := NewResumeService(
 		sqliteadapter.NewResumeRepository(matchFixture.db),
+		matchFixture.confirmationRepository,
 		matchFixture.matchRepository,
 		matchFixture.profileRepository,
 		matchFixture.jdRepository,
@@ -240,6 +302,7 @@ func newResumeServiceFixture(t *testing.T) *ResumeService {
 	}
 	return NewResumeService(
 		sqliteadapter.NewResumeRepository(matchFixture.db),
+		matchFixture.confirmationRepository,
 		matchFixture.matchRepository,
 		matchFixture.profileRepository,
 		matchFixture.jdRepository,
