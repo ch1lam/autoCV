@@ -173,6 +173,26 @@ func TestMatchServiceAnalyzesScoresAndRestoresReview(t *testing.T) {
 		len(restored.Clarifications) != len(review.Clarifications) {
 		t.Fatalf("unexpected restored review %#v", restored)
 	}
+
+	reusing := NewMatchService(
+		fixture.matchRepository,
+		fixture.scopeRepository,
+		fixture.scopeRepository,
+		fixture.stageRepository,
+		fixture.clarificationRepository,
+		fixture.confirmationRepository,
+		fixture.profileRepository,
+		fixture.jdRepository,
+		failingMatchSuggester{},
+		fixedClock{now: profileTestTime.Add(2 * time.Hour)},
+	)
+	reused, err := reusing.Analyze()
+	if err != nil {
+		t.Fatalf("reuse successful match stage: %v", err)
+	}
+	if reused.Status != "ready" || reused.TotalScore != review.TotalScore {
+		t.Fatalf("unexpected reused match review %#v", reused)
+	}
 }
 
 func TestMatchServiceSkipClarificationLowersSuggestionStrength(t *testing.T) {

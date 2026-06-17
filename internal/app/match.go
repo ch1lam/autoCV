@@ -212,6 +212,11 @@ func (service *MatchService) Analyze() (MatchReview, error) {
 	if blocked.Status != "" {
 		return blocked, nil
 	}
+	if review, reused, err := service.reuseSuccessfulMatchStage(ctx, input); err != nil {
+		return MatchReview{}, err
+	} else if reused {
+		return review, nil
+	}
 
 	now := service.clock.Now().UTC()
 	if err := service.saveMatchRunStage(
@@ -778,6 +783,44 @@ func (service *MatchService) saveFailure(
 			slog.Any("error", err),
 		)
 	}
+}
+
+func (service *MatchService) reuseSuccessfulMatchStage(
+	ctx context.Context,
+	input preparedMatchInput,
+) (MatchReview, bool, error) {
+	if service.stageRepository == nil {
+		return MatchReview{}, false, nil
+	}
+	runID := resumeRunID(input.profile.ID, input.jd.ID)
+	if _, found, err := service.stageRepository.SucceededStageResult(
+		ctx,
+		runID,
+		workflow.StageMatched,
+		input.inputHash,
+	); err != nil {
+		return MatchReview{}, false, err
+	} else if !found {
+		return MatchReview{}, false, nil
+	}
+	analysis, found, err := service.matchRepository.GetLatest(
+		ctx,
+		input.profile.ID,
+		input.jd.ID,
+	)
+	if err != nil {
+		return MatchReview{}, false, err
+	}
+	if !found ||
+		analysis.InputHash != input.inputHash ||
+		analysis.Status != "succeeded" {
+		return MatchReview{}, false, nil
+	}
+	review, err := service.getReview(ctx)
+	if err != nil {
+		return MatchReview{}, false, err
+	}
+	return review, true, nil
 }
 
 func (service *MatchService) saveMatchStageResult(
