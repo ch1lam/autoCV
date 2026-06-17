@@ -272,6 +272,18 @@ func (service *ResumeService) Generate(
 	if err != nil {
 		return ResumeWorkspace{}, err
 	}
+	if workspace, reused, err := service.reuseSuccessfulResumeDraftStage(
+		ctx,
+		run,
+		inputHash,
+		previous,
+		found,
+		input.evidence,
+	); err != nil {
+		return ResumeWorkspace{}, err
+	} else if reused {
+		return workspace, nil
+	}
 	if !found {
 		run = domain.ResumeRun{
 			ID:        resumeRunID(input.profile.ID, input.jd.ID),
@@ -396,6 +408,48 @@ func (service *ResumeService) Generate(
 		now,
 	)
 	return resumeWorkspaceFrom(run, resume, input.evidence), nil
+}
+
+func (service *ResumeService) reuseSuccessfulResumeDraftStage(
+	ctx context.Context,
+	run domain.ResumeRun,
+	inputHash string,
+	resume domain.Resume,
+	foundResume bool,
+	evidence []domain.Evidence,
+) (ResumeWorkspace, bool, error) {
+	if service.stageRepository == nil || !foundResume ||
+		resume.InputHash != inputHash {
+		return ResumeWorkspace{}, false, nil
+	}
+	stageResult, found, err := service.stageRepository.SucceededStageResult(
+		ctx,
+		run.ID,
+		workflow.StageDrafted,
+		inputHash,
+	)
+	if err != nil {
+		return ResumeWorkspace{}, false, err
+	}
+	if !found {
+		return ResumeWorkspace{}, false, nil
+	}
+	var payload struct {
+		ResumeID string `json:"resume_id"`
+	}
+	if err := json.Unmarshal([]byte(stageResult.ResultJSON), &payload); err != nil {
+		return ResumeWorkspace{}, false, nil
+	}
+	if payload.ResumeID != resume.ID {
+		return ResumeWorkspace{}, false, nil
+	}
+	if err := domain.ValidateResume(resume, evidence); err != nil {
+		return ResumeWorkspace{}, false, fmt.Errorf(
+			"validate reusable resume: %w",
+			err,
+		)
+	}
+	return resumeWorkspaceFrom(run, resume, evidence), true, nil
 }
 
 func (service *ResumeService) saveResumeDraftStageResult(

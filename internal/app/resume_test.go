@@ -79,6 +79,24 @@ func TestResumeServiceGeneratesRestoresEditsAndPreservesLocks(t *testing.T) {
 		!strings.Contains(stageResult.ResultJSON, `"resume_id"`) {
 		t.Fatalf("unexpected resume draft stage result found=%v %#v", found, stageResult)
 	}
+	reusing := NewResumeService(
+		repository,
+		matchFixture.stageRepository,
+		matchFixture.confirmationRepository,
+		matchFixture.matchRepository,
+		matchFixture.profileRepository,
+		matchFixture.jdRepository,
+		failingResumeDrafter{},
+		fixedClock{now: profileTestTime.Add(2*time.Hour + time.Minute)},
+	)
+	reused, err := reusing.Generate("zh", 0.5)
+	if err != nil {
+		t.Fatalf("reuse successful resume draft stage: %v", err)
+	}
+	if reused.Version != generated.Version ||
+		reused.ResumeID != generated.ResumeID {
+		t.Fatalf("unexpected reused resume workspace %#v", reused)
+	}
 	if generated.Blocks[0].Evidence[0].Sources[0].DocumentName == "" {
 		t.Fatal("expected traceable resume source")
 	}
