@@ -132,12 +132,14 @@ func run() error {
 		systemclock.Clock{},
 	)))
 	resumeRepository := sqlite.NewResumeRepository(db)
+	stageResultRepository := sqlite.NewStageResultRepository(db)
 	clarificationRepository := sqlite.NewClarificationRepository(db)
 	confirmationRepository := sqlite.NewRunConfirmationRepository(db)
 	app.RegisterService(application.NewService(appservice.NewMatchService(
 		matchRepository,
 		resumeRepository,
 		resumeRepository,
+		stageResultRepository,
 		clarificationRepository,
 		confirmationRepository,
 		profileRepository,

@@ -24,6 +24,7 @@ type MatchService struct {
 	matchRepository         ports.MatchRepository
 	scopeRepository         ports.RunScopeRepository
 	runRepository           ports.ResumeRunRepository
+	stageRepository         ports.StageResultRepository
 	clarificationRepository ports.ClarificationRepository
 	confirmationRepository  ports.RunConfirmationRepository
 	profileRepository       ports.ProfileRepository
@@ -133,6 +134,7 @@ func NewMatchService(
 	matchRepository ports.MatchRepository,
 	scopeRepository ports.RunScopeRepository,
 	runRepository ports.ResumeRunRepository,
+	stageRepository ports.StageResultRepository,
 	clarificationRepository ports.ClarificationRepository,
 	confirmationRepository ports.RunConfirmationRepository,
 	profileRepository ports.ProfileRepository,
@@ -144,6 +146,7 @@ func NewMatchService(
 		matchRepository:         matchRepository,
 		scopeRepository:         scopeRepository,
 		runRepository:           runRepository,
+		stageRepository:         stageRepository,
 		clarificationRepository: clarificationRepository,
 		confirmationRepository:  confirmationRepository,
 		profileRepository:       profileRepository,
@@ -210,6 +213,23 @@ func (service *MatchService) Analyze() (MatchReview, error) {
 		return blocked, nil
 	}
 
+	now := service.clock.Now().UTC()
+	if err := service.saveMatchRunStage(
+		ctx,
+		input,
+		workflow.StageMatched,
+		now,
+	); err != nil {
+		return MatchReview{}, err
+	}
+	service.saveMatchStageResult(
+		ctx,
+		input,
+		workflow.StageStatusRunning,
+		"",
+		"",
+		now,
+	)
 	suggestions, err := service.suggester.SuggestMatches(
 		ctx,
 		ports.SuggestMatchesRequest{
@@ -219,9 +239,25 @@ func (service *MatchService) Analyze() (MatchReview, error) {
 	)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
+			service.saveMatchStageResult(
+				ctx,
+				input,
+				workflow.StageStatusCancelled,
+				"",
+				stageErrorJSON(err),
+				service.clock.Now().UTC(),
+			)
 			return MatchReview{}, fmt.Errorf("suggest matches: %w", err)
 		}
 		service.saveFailure(ctx, input, err)
+		service.saveMatchStageResult(
+			ctx,
+			input,
+			workflow.StageStatusFailed,
+			"",
+			stageErrorJSON(err),
+			service.clock.Now().UTC(),
+		)
 		return MatchReview{}, fmt.Errorf("suggest matches: %w", err)
 	}
 	if err := domain.ValidateMatchSuggestions(
@@ -230,15 +266,30 @@ func (service *MatchService) Analyze() (MatchReview, error) {
 		suggestions,
 	); err != nil {
 		service.saveFailure(ctx, input, err)
+		service.saveMatchStageResult(
+			ctx,
+			input,
+			workflow.StageStatusFailed,
+			"",
+			stageErrorJSON(err),
+			service.clock.Now().UTC(),
+		)
 		return MatchReview{}, fmt.Errorf("validate match suggestions: %w", err)
 	}
 	score, err := domain.CalculateMatchScore(input.requirements, suggestions)
 	if err != nil {
 		service.saveFailure(ctx, input, err)
+		service.saveMatchStageResult(
+			ctx,
+			input,
+			workflow.StageStatusFailed,
+			"",
+			stageErrorJSON(err),
+			service.clock.Now().UTC(),
+		)
 		return MatchReview{}, fmt.Errorf("calculate match score: %w", err)
 	}
 
-	now := service.clock.Now().UTC()
 	analysis := domain.MatchAnalysis{
 		ID:           matchAnalysisID(input.profile.ID, input.jd.ID),
 		ProfileID:    input.profile.ID,
@@ -266,6 +317,14 @@ func (service *MatchService) Analyze() (MatchReview, error) {
 	if err != nil {
 		return MatchReview{}, err
 	}
+	service.saveMatchStageResult(
+		ctx,
+		input,
+		workflow.StageStatusSucceeded,
+		matchStageResultJSON(analysis, score, len(questions)),
+		"",
+		now,
+	)
 
 	slog.Info(
 		"match.analysis.succeeded",
@@ -719,6 +778,80 @@ func (service *MatchService) saveFailure(
 			slog.Any("error", err),
 		)
 	}
+}
+
+func (service *MatchService) saveMatchStageResult(
+	ctx context.Context,
+	input preparedMatchInput,
+	status workflow.StageStatus,
+	resultJSON string,
+	errorJSON string,
+	now time.Time,
+) {
+	if service.stageRepository == nil {
+		return
+	}
+	runID := resumeRunID(input.profile.ID, input.jd.ID)
+	result := workflow.StageResult{
+		ID:         stageResultID(runID, workflow.StageMatched, input.inputHash),
+		RunID:      runID,
+		Stage:      workflow.StageMatched,
+		InputHash:  input.inputHash,
+		Status:     status,
+		ResultJSON: resultJSON,
+		ErrorJSON:  errorJSON,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	if err := service.stageRepository.SaveStageResult(ctx, result); err != nil {
+		slog.Error(
+			"match.stage_result.persist.failed",
+			slog.String("run_id", runID),
+			slog.String("stage", string(workflow.StageMatched)),
+			slog.String("status", string(status)),
+			slog.Any("error", err),
+		)
+	}
+}
+
+func matchStageResultJSON(
+	analysis domain.MatchAnalysis,
+	score domain.MatchScore,
+	clarificationCount int,
+) string {
+	return stageResultJSON(struct {
+		AnalysisID         string `json:"analysis_id"`
+		InputHash          string `json:"input_hash"`
+		RequirementCount   int    `json:"requirement_count"`
+		ClarificationCount int    `json:"clarification_count"`
+		TotalScore         int    `json:"total_score"`
+		HardCapApplied     bool   `json:"hard_cap_applied"`
+	}{
+		AnalysisID:         analysis.ID,
+		InputHash:          analysis.InputHash,
+		RequirementCount:   len(analysis.Requirements),
+		ClarificationCount: clarificationCount,
+		TotalScore:         score.Total,
+		HardCapApplied:     score.HardCapApplied,
+	})
+}
+
+func stageErrorJSON(err error) string {
+	message := defaultMatchAnalysisErr
+	if err != nil {
+		message = err.Error()
+	}
+	return stageResultJSON(struct {
+		Message string `json:"message"`
+	}{Message: message})
+}
+
+func stageResultJSON(value any) string {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
 }
 
 func (service *MatchService) saveClarificationRound(

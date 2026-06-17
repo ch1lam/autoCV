@@ -798,6 +798,24 @@ func resumeRunID(profileID string, jdID string) string {
 	).String()
 }
 
+func stageResultID(
+	runID string,
+	stage workflow.Stage,
+	inputHash string,
+) string {
+	return uuid.NewSHA1(
+		uuid.NameSpaceURL,
+		[]byte(
+			fmt.Sprintf(
+				"https://autocv.local/stage-results/%s/%s/%s",
+				runID,
+				stage,
+				inputHash,
+			),
+		),
+	).String()
+}
+
 func resumeBlockID(runID string, key string) string {
 	return uuid.NewSHA1(
 		uuid.NameSpaceURL,

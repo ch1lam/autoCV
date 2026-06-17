@@ -16,6 +16,7 @@ import (
 	sqliteadapter "github.com/ch1lam/autocv/internal/adapters/sqlite"
 	"github.com/ch1lam/autocv/internal/domain"
 	"github.com/ch1lam/autocv/internal/ports"
+	"github.com/ch1lam/autocv/internal/workflow"
 )
 
 type invalidMatchSuggester struct{}
@@ -39,6 +40,15 @@ func (failingMatchSuggester) SuggestMatches(
 	ports.SuggestMatchesRequest,
 ) ([]domain.MatchSuggestion, error) {
 	return nil, errors.New("provider unavailable")
+}
+
+type cancelledMatchSuggester struct{}
+
+func (cancelledMatchSuggester) SuggestMatches(
+	context.Context,
+	ports.SuggestMatchesRequest,
+) ([]domain.MatchSuggestion, error) {
+	return nil, context.Canceled
 }
 
 type allClarificationSuggester struct{}
@@ -104,14 +114,28 @@ func TestMatchServiceAnalyzesScoresAndRestoresReview(t *testing.T) {
 	if review.Clarifications[0].Status != string(domain.ClarificationPending) {
 		t.Fatalf("expected pending clarification, got %#v", review.Clarifications[0])
 	}
+	var runID string
 	var runStage string
 	if err := fixture.db.QueryRow(
-		"SELECT stage FROM resume_runs LIMIT 1",
-	).Scan(&runStage); err != nil {
+		"SELECT id, stage FROM resume_runs LIMIT 1",
+	).Scan(&runID, &runStage); err != nil {
 		t.Fatalf("read clarification run stage: %v", err)
 	}
 	if runStage != "requires_user_input" {
 		t.Fatalf("expected run to require user input, got %q", runStage)
+	}
+	stageResult, found, err := fixture.stageRepository.LatestStageResult(
+		context.Background(),
+		runID,
+		workflow.StageMatched,
+	)
+	if err != nil {
+		t.Fatalf("read match stage result: %v", err)
+	}
+	if !found ||
+		stageResult.Status != workflow.StageStatusSucceeded ||
+		!strings.Contains(stageResult.ResultJSON, `"total_score"`) {
+		t.Fatalf("unexpected match stage result found=%v %#v", found, stageResult)
 	}
 
 	var foundTraceableEvidence bool
@@ -131,6 +155,7 @@ func TestMatchServiceAnalyzesScoresAndRestoresReview(t *testing.T) {
 		fixture.matchRepository,
 		fixture.scopeRepository,
 		fixture.scopeRepository,
+		fixture.stageRepository,
 		fixture.clarificationRepository,
 		fixture.confirmationRepository,
 		fixture.profileRepository,
@@ -387,7 +412,59 @@ func TestMatchServicePersistsProviderAndValidationFailures(t *testing.T) {
 			if review.Status != "failed" || review.Error == "" {
 				t.Fatalf("expected persisted failure, got %#v", review)
 			}
+			var runID string
+			if err := fixture.db.QueryRow(
+				"SELECT id FROM resume_runs LIMIT 1",
+			).Scan(&runID); err != nil {
+				t.Fatalf("read failed run id: %v", err)
+			}
+			stageResult, found, err := fixture.stageRepository.LatestStageResult(
+				context.Background(),
+				runID,
+				workflow.StageMatched,
+			)
+			if err != nil {
+				t.Fatalf("read failed stage result: %v", err)
+			}
+			if !found ||
+				stageResult.Status != workflow.StageStatusFailed ||
+				!strings.Contains(stageResult.ErrorJSON, "message") {
+				t.Fatalf(
+					"unexpected failed stage result found=%v %#v",
+					found,
+					stageResult,
+				)
+			}
 		})
+	}
+}
+
+func TestMatchServiceRecordsCancelledStageResult(t *testing.T) {
+	fixture := newMatchServiceFixture(t, cancelledMatchSuggester{})
+	fixture.importProfile(t)
+	fixture.analyzeJD(t, fixture.jdText)
+
+	if _, err := fixture.service.Analyze(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancelled analysis, got %v", err)
+	}
+	var runID string
+	if err := fixture.db.QueryRow(
+		"SELECT id FROM resume_runs LIMIT 1",
+	).Scan(&runID); err != nil {
+		t.Fatalf("read cancelled run id: %v", err)
+	}
+	stageResult, found, err := fixture.stageRepository.LatestStageResult(
+		context.Background(),
+		runID,
+		workflow.StageMatched,
+	)
+	if err != nil {
+		t.Fatalf("read cancelled stage result: %v", err)
+	}
+	if !found ||
+		stageResult.Status != workflow.StageStatusCancelled ||
+		!strings.Contains(stageResult.ErrorJSON, "context canceled") {
+		t.Fatalf("unexpected cancelled stage result found=%v %#v", found, stageResult)
 	}
 }
 
@@ -572,6 +649,7 @@ type matchServiceFixture struct {
 	jdRepository            *sqliteadapter.JDRepository
 	matchRepository         *sqliteadapter.MatchRepository
 	scopeRepository         *sqliteadapter.ResumeRepository
+	stageRepository         *sqliteadapter.StageResultRepository
 	clarificationRepository *sqliteadapter.ClarificationRepository
 	confirmationRepository  *sqliteadapter.RunConfirmationRepository
 	profileService          *ProfileService
@@ -640,6 +718,7 @@ func newMatchServiceFixtureFromFiles(
 	jdRepository := sqliteadapter.NewJDRepository(db)
 	matchRepository := sqliteadapter.NewMatchRepository(db)
 	scopeRepository := sqliteadapter.NewResumeRepository(db)
+	stageRepository := sqliteadapter.NewStageResultRepository(db)
 	clarificationRepository := sqliteadapter.NewClarificationRepository(db)
 	confirmationRepository := sqliteadapter.NewRunConfirmationRepository(db)
 	provider := fakeprovider.New()
@@ -671,6 +750,7 @@ func newMatchServiceFixtureFromFiles(
 			matchRepository,
 			scopeRepository,
 			scopeRepository,
+			stageRepository,
 			clarificationRepository,
 			confirmationRepository,
 			profileRepository,
@@ -682,6 +762,7 @@ func newMatchServiceFixtureFromFiles(
 		jdRepository:            jdRepository,
 		matchRepository:         matchRepository,
 		scopeRepository:         scopeRepository,
+		stageRepository:         stageRepository,
 		clarificationRepository: clarificationRepository,
 		confirmationRepository:  confirmationRepository,
 		profileService:          profileService,
