@@ -2,6 +2,8 @@ package fakeprovider
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -108,6 +110,71 @@ func TestDraftResumeUsesUserConfirmedClarifications(t *testing.T) {
 	}
 }
 
+func TestDraftResumeUsesFixedPackagingSamples(t *testing.T) {
+	evidence, match := fixedPackagingSample()
+	tests := []struct {
+		level     float64
+		wantID    string
+		wantCount int
+	}{
+		{level: 0, wantID: "conservative", wantCount: 4},
+		{level: 0.5, wantID: "balanced", wantCount: 6},
+		{level: 1, wantID: "amplified", wantCount: 8},
+	}
+	for _, test := range tests {
+		t.Run(test.wantID, func(t *testing.T) {
+			strategy, found := domain.ResumePackagingStrategyForLevel(
+				test.level,
+			)
+			if !found {
+				t.Fatalf("expected strategy for %.1f", test.level)
+			}
+			draft, err := New().DraftResume(
+				context.Background(),
+				ports.DraftResumeRequest{
+					Language:          domain.ResumeLanguageChinese,
+					TargetRole:        "后端工程师",
+					PackagingLevel:    test.level,
+					PackagingStrategy: strategy,
+					Match:             match,
+					Evidence:          evidence,
+				},
+			)
+			if err != nil {
+				t.Fatalf("draft resume: %v", err)
+			}
+			if got := len(draft.Blocks) - 1; got != test.wantCount {
+				t.Fatalf(
+					"expected %d grounded blocks, got %d",
+					test.wantCount,
+					got,
+				)
+			}
+			notes := strings.Join(draft.OptimizationNotes, "\n")
+			if !strings.Contains(notes, "包装档位："+strategy.Label) {
+				t.Fatalf("expected strategy note in %#v", draft.OptimizationNotes)
+			}
+			for index := 0; index < test.wantCount; index++ {
+				block := draft.Blocks[index+1]
+				if len(block.SourceEvidenceIDs) != 1 ||
+					block.SourceEvidenceIDs[0] != evidence[index].ID ||
+					block.Content != evidence[index].Content {
+					t.Fatalf(
+						"unexpected grounded block at %d: %#v",
+						index,
+						block,
+					)
+				}
+			}
+			allContent := strings.Join(resumeBlockContents(draft.Blocks), "\n")
+			if strings.Contains(allContent, "Kubernetes") ||
+				strings.Contains(allContent, "99%") {
+				t.Fatalf("draft invented unsupported content: %s", allContent)
+			}
+		})
+	}
+}
+
 func TestFakeResumeSummaryTrimsSourcePunctuation(t *testing.T) {
 	summary := fakeResumeSummary(
 		domain.ResumeLanguageChinese,
@@ -116,4 +183,44 @@ func TestFakeResumeSummaryTrimsSourcePunctuation(t *testing.T) {
 	if summary != "围绕目标岗位，重点呈现后端服务、稳定性治理等相关经历。" {
 		t.Fatalf("unexpected summary %q", summary)
 	}
+}
+
+func fixedPackagingSample() ([]domain.Evidence, domain.MatchAnalysis) {
+	evidence := make([]domain.Evidence, 0, 8)
+	requirements := make([]domain.MatchRequirement, 0, 8)
+	suggestions := make([]domain.MatchSuggestion, 0, 8)
+	for index := 0; index < 8; index++ {
+		ordinal := index + 1
+		evidenceID := fmt.Sprintf("evidence-%02d", ordinal)
+		requirementID := fmt.Sprintf("requirement-%02d", ordinal)
+		evidence = append(evidence, domain.Evidence{
+			ID:      evidenceID,
+			Kind:    string(domain.EvidenceKindExperience),
+			Title:   fmt.Sprintf("服务治理 %02d", ordinal),
+			Content: fmt.Sprintf("负责服务治理 %02d 的接口交付和故障复盘。", ordinal),
+		})
+		requirements = append(requirements, domain.MatchRequirement{
+			ID:         requirementID,
+			Text:       fmt.Sprintf("后端服务能力 %02d", ordinal),
+			Importance: 5,
+		})
+		suggestions = append(suggestions, domain.MatchSuggestion{
+			RequirementID: requirementID,
+			Strength:      domain.MatchStrengthStrong,
+			EvidenceIDs:   []string{evidenceID},
+			Explanation:   "固定样本直接匹配。",
+		})
+	}
+	return evidence, domain.MatchAnalysis{
+		Requirements: requirements,
+		Suggestions:  suggestions,
+	}
+}
+
+func resumeBlockContents(blocks []domain.ResumeBlockDraft) []string {
+	contents := make([]string, 0, len(blocks))
+	for _, block := range blocks {
+		contents = append(contents, block.Content)
+	}
+	return contents
 }
