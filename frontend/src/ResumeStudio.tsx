@@ -248,6 +248,27 @@ function ResumeStudio({
           </section>
         )}
 
+        {workspace.packagingStrategy.id && (
+          <section
+            aria-label="包装策略"
+            className="resume-packaging-strategy"
+          >
+            <div>
+              <span>包装策略</span>
+              <strong>{workspace.packagingStrategy.label}</strong>
+              <p>{workspace.packagingStrategy.description}</p>
+            </div>
+            <ul>
+              <li>{workspace.packagingStrategy.languageStrength}</li>
+              <li>{workspace.packagingStrategy.selectionPolicy}</li>
+              <li>{workspace.packagingStrategy.inferencePolicy}</li>
+              {workspace.packagingStrategy.guardrails.map((guardrail) => (
+                <li key={guardrail}>{guardrail}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         <section
           aria-label="本次优化说明"
           className="resume-optimization-ledger"

@@ -430,6 +430,15 @@ const resumeWorkspace = {
   targetRole: "Senior Backend Engineer",
   packagingLevel: 0.5,
   packagingLabel: "平衡",
+  packagingStrategy: {
+    id: "balanced",
+    label: "平衡",
+    description: "默认档位，在来源事实内归纳岗位相关能力。",
+    languageStrength: "在明确来源基础上使用更贴近目标岗位的表达。",
+    selectionPolicy: "优先选择最相关的 Evidence，兼顾覆盖核心要求。",
+    inferencePolicy: "允许从事实中归纳能力，但必须保留证据边界。",
+    guardrails: ["不得新增技术、职责、数字或未确认成果。"],
+  },
   markdown: `# Senior Backend Engineer
 
 ## 职业概述
@@ -510,8 +519,8 @@ const providerSettings = {
       description: "发送结构化岗位要求和必要上下文。",
     },
     {
-      label: "Resume Block 与包装参数",
-      description: "发送当前结构化内容和包装档位。",
+      label: "Resume Block 与包装策略",
+      description: "发送当前结构化内容和包装策略。",
     },
   ],
   localOnlyTypes: [
@@ -811,6 +820,14 @@ describe("Paper Trail match review", () => {
     const dialog = screen.getByRole("dialog", {
       name: "基于当前匹配结果生成简历",
     });
+    expect(
+      within(dialog).getByText("默认档位，在来源事实内归纳岗位相关能力。"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        "适合大多数投递，兼顾可读性、相关度和证据边界。",
+      ),
+    ).toBeInTheDocument();
     await user.click(
       within(dialog).getByRole("button", { name: "确认生成" }),
     );
@@ -821,6 +838,13 @@ describe("Paper Trail match review", () => {
     ).toHaveValue(resumeWorkspace.markdown);
     expect(
       screen.getByRole("complementary", { name: "简历 Block 检查器" }),
+    ).toBeInTheDocument();
+    const strategy = screen.getByRole("region", { name: "包装策略" });
+    expect(within(strategy).getByText("平衡")).toBeInTheDocument();
+    expect(
+      within(strategy).getByText(
+        "允许从事实中归纳能力，但必须保留证据边界。",
+      ),
     ).toBeInTheDocument();
   });
 

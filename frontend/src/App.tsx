@@ -87,6 +87,34 @@ const providerRequestDetails: Record<
   },
 };
 
+const packagingOptions = [
+  {
+    value: 0,
+    label: "保守",
+    description: "只使用明确事实和已确认内容，语气克制。",
+    impact: "适合资料较少、数字未确认或需要稳妥投递的场景。",
+  },
+  {
+    value: 0.5,
+    label: "平衡",
+    description: "默认档位，在来源事实内归纳岗位相关能力。",
+    impact: "适合大多数投递，兼顾可读性、相关度和证据边界。",
+  },
+  {
+    value: 1,
+    label: "强化",
+    description: "优先突出高相关经历，但仍不新增技术、职责或数字。",
+    impact: "适合证据充分且目标岗位竞争较强的场景。",
+  },
+] as const;
+
+function getPackagingOption(value: number) {
+  return (
+    packagingOptions.find((option) => option.value === value) ??
+    packagingOptions[1]
+  );
+}
+
 function isProviderCancellation(error: unknown) {
   return (
     error instanceof Error &&
@@ -196,6 +224,7 @@ function App() {
     useState("");
   const [selectedProfileSourceId, setSelectedProfileSourceId] = useState("");
   const noticeTimer = useRef<number>();
+  const selectedPackagingOption = getPackagingOption(generationPackaging);
 
   const applyProfileOverview = useCallback((overview: ProfileOverview) => {
     setProfileOverview(overview);
@@ -1959,13 +1988,7 @@ function App() {
               </div>
               <div>
                 <dt>包装档位</dt>
-                <dd>
-                  {generationPackaging === 0
-                    ? "保守"
-                    : generationPackaging === 0.5
-                      ? "平衡"
-                      : "强化"}
-                </dd>
+                <dd>{selectedPackagingOption.label}</dd>
               </div>
               <div>
                 <dt>资料范围</dt>
@@ -1992,7 +2015,7 @@ function App() {
                 <span>发送内容</span>
                 <strong>
                   {providerSettings?.provider === "openai"
-                    ? "Requirement、相关 Evidence、包装参数"
+                    ? "Requirement、相关 Evidence、包装策略"
                     : "不向网络发送用户内容"}
                 </strong>
               </div>
@@ -2018,14 +2041,10 @@ function App() {
                 ))}
               </div>
             </fieldset>
-            <fieldset className="generate-options">
+            <fieldset className="generate-options generate-options--packaging">
               <legend>包装强度</legend>
               <div>
-                {[
-                  { label: "保守", value: 0 },
-                  { label: "平衡", value: 0.5 },
-                  { label: "强化", value: 1 },
-                ].map((option) => (
+                {packagingOptions.map((option) => (
                   <button
                     aria-pressed={generationPackaging === option.value}
                     className={
@@ -2035,11 +2054,16 @@ function App() {
                     onClick={() => setGenerationPackaging(option.value)}
                     type="button"
                   >
-                    {option.label}
+                    <strong>{option.label}</strong>
+                    <small>{option.description}</small>
                   </button>
                 ))}
               </div>
             </fieldset>
+            <section className="packaging-impact" aria-label="当前包装档位影响">
+              <span>当前影响</span>
+              <p>{selectedPackagingOption.impact}</p>
+            </section>
             <div className="dialog-actions">
               <button
                 className="button button--secondary"
