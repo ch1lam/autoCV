@@ -36,6 +36,7 @@ export {
     MatchEvidenceSummary,
     MatchReview,
     PDFWorkspace,
+    PackagingStrategySummary,
     ProfileOverview,
     ProfileSearchResult,
     ProfileSummary,

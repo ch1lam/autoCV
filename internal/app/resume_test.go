@@ -38,6 +38,10 @@ func TestResumeServiceGeneratesRestoresEditsAndPreservesLocks(t *testing.T) {
 		len(generated.Blocks) < 2 {
 		t.Fatalf("unexpected generated workspace %#v", generated)
 	}
+	if generated.PackagingStrategy.ID != "balanced" ||
+		generated.PackagingStrategy.Description == "" {
+		t.Fatalf("expected balanced packaging strategy, got %#v", generated.PackagingStrategy)
+	}
 	if generated.Blocks[0].Evidence[0].Sources[0].DocumentName == "" {
 		t.Fatal("expected traceable resume source")
 	}

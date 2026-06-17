@@ -405,16 +405,27 @@ type runConfirmationPayload struct {
 	Content       string `json:"content"`
 }
 
+type packagingStrategyPayload struct {
+	ID               string   `json:"id"`
+	Label            string   `json:"label"`
+	Description      string   `json:"description"`
+	LanguageStrength string   `json:"language_strength"`
+	SelectionPolicy  string   `json:"selection_policy"`
+	InferencePolicy  string   `json:"inference_policy"`
+	Guardrails       []string `json:"guardrails"`
+}
+
 func resumeRequestPayload(
 	request ports.DraftResumeRequest,
 ) struct {
-	Language       string                    `json:"language"`
-	TargetRole     string                    `json:"target_role"`
-	PackagingLevel float64                   `json:"packaging_level"`
-	Requirements   []matchRequirementPayload `json:"requirements"`
-	Suggestions    []matchSuggestionPayload  `json:"suggestions"`
-	Evidence       []evidencePayload         `json:"evidence"`
-	Confirmations  []runConfirmationPayload  `json:"confirmations"`
+	Language          string                    `json:"language"`
+	TargetRole        string                    `json:"target_role"`
+	PackagingLevel    float64                   `json:"packaging_level"`
+	PackagingStrategy packagingStrategyPayload  `json:"packaging_strategy"`
+	Requirements      []matchRequirementPayload `json:"requirements"`
+	Suggestions       []matchSuggestionPayload  `json:"suggestions"`
+	Evidence          []evidencePayload         `json:"evidence"`
+	Confirmations     []runConfirmationPayload  `json:"confirmations"`
 } {
 	requirements := make(
 		[]matchRequirementPayload,
@@ -457,21 +468,39 @@ func resumeRequestPayload(
 		})
 	}
 	return struct {
-		Language       string                    `json:"language"`
-		TargetRole     string                    `json:"target_role"`
-		PackagingLevel float64                   `json:"packaging_level"`
-		Requirements   []matchRequirementPayload `json:"requirements"`
-		Suggestions    []matchSuggestionPayload  `json:"suggestions"`
-		Evidence       []evidencePayload         `json:"evidence"`
-		Confirmations  []runConfirmationPayload  `json:"confirmations"`
+		Language          string                    `json:"language"`
+		TargetRole        string                    `json:"target_role"`
+		PackagingLevel    float64                   `json:"packaging_level"`
+		PackagingStrategy packagingStrategyPayload  `json:"packaging_strategy"`
+		Requirements      []matchRequirementPayload `json:"requirements"`
+		Suggestions       []matchSuggestionPayload  `json:"suggestions"`
+		Evidence          []evidencePayload         `json:"evidence"`
+		Confirmations     []runConfirmationPayload  `json:"confirmations"`
 	}{
 		Language:       string(request.Language),
 		TargetRole:     request.TargetRole,
 		PackagingLevel: request.PackagingLevel,
-		Requirements:   requirements,
-		Suggestions:    suggestions,
-		Evidence:       evidencePayloads(request.Evidence),
-		Confirmations:  confirmations,
+		PackagingStrategy: packagingStrategyPayloadFrom(
+			request.PackagingStrategy,
+		),
+		Requirements:  requirements,
+		Suggestions:   suggestions,
+		Evidence:      evidencePayloads(request.Evidence),
+		Confirmations: confirmations,
+	}
+}
+
+func packagingStrategyPayloadFrom(
+	strategy domain.ResumePackagingStrategy,
+) packagingStrategyPayload {
+	return packagingStrategyPayload{
+		ID:               strategy.ID,
+		Label:            strategy.Label,
+		Description:      strategy.Description,
+		LanguageStrength: strategy.LanguageStrength,
+		SelectionPolicy:  strategy.SelectionPolicy,
+		InferencePolicy:  strategy.InferencePolicy,
+		Guardrails:       append([]string(nil), strategy.Guardrails...),
 	}
 }
 

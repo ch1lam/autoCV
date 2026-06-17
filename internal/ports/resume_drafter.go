@@ -7,12 +7,13 @@ import (
 )
 
 type DraftResumeRequest struct {
-	Language       domain.ResumeLanguage
-	TargetRole     string
-	PackagingLevel float64
-	Match          domain.MatchAnalysis
-	Evidence       []domain.Evidence
-	Confirmations  []domain.RunConfirmation
+	Language          domain.ResumeLanguage
+	TargetRole        string
+	PackagingLevel    float64
+	PackagingStrategy domain.ResumePackagingStrategy
+	Match             domain.MatchAnalysis
+	Evidence          []domain.Evidence
+	Confirmations     []domain.RunConfirmation
 }
 
 type ResumeDrafter interface {

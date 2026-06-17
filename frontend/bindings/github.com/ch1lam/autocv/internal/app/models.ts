@@ -772,6 +772,55 @@ export class PDFWorkspace {
     }
 }
 
+export class PackagingStrategySummary {
+    "id": string;
+    "label": string;
+    "description": string;
+    "languageStrength": string;
+    "selectionPolicy": string;
+    "inferencePolicy": string;
+    "guardrails": string[];
+
+    /** Creates a new PackagingStrategySummary instance. */
+    constructor($$source: Partial<PackagingStrategySummary> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("label" in $$source)) {
+            this["label"] = "";
+        }
+        if (!("description" in $$source)) {
+            this["description"] = "";
+        }
+        if (!("languageStrength" in $$source)) {
+            this["languageStrength"] = "";
+        }
+        if (!("selectionPolicy" in $$source)) {
+            this["selectionPolicy"] = "";
+        }
+        if (!("inferencePolicy" in $$source)) {
+            this["inferencePolicy"] = "";
+        }
+        if (!("guardrails" in $$source)) {
+            this["guardrails"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PackagingStrategySummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PackagingStrategySummary {
+        const $$createField6_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("guardrails" in $$parsedSource) {
+            $$parsedSource["guardrails"] = $$createField6_0($$parsedSource["guardrails"]);
+        }
+        return new PackagingStrategySummary($$parsedSource as Partial<PackagingStrategySummary>);
+    }
+}
+
 export class ProfileOverview {
     "profileId": string;
     "name": string;
@@ -1144,6 +1193,7 @@ export class ResumeWorkspace {
     "targetRole": string;
     "packagingLevel": number;
     "packagingLabel": string;
+    "packagingStrategy": PackagingStrategySummary;
     "markdown": string;
     "updatedAt": string;
     "optimizationNotes": string[];
@@ -1184,6 +1234,9 @@ export class ResumeWorkspace {
         if (!("packagingLabel" in $$source)) {
             this["packagingLabel"] = "";
         }
+        if (!("packagingStrategy" in $$source)) {
+            this["packagingStrategy"] = (new PackagingStrategySummary());
+        }
         if (!("markdown" in $$source)) {
             this["markdown"] = "";
         }
@@ -1205,17 +1258,21 @@ export class ResumeWorkspace {
      */
     static createFrom($$source: any = {}): ResumeWorkspace {
         const $$createField3_0 = $$createType0;
-        const $$createField13_0 = $$createType0;
-        const $$createField14_0 = $$createType28;
+        const $$createField11_0 = $$createType27;
+        const $$createField14_0 = $$createType0;
+        const $$createField15_0 = $$createType29;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("exportIssues" in $$parsedSource) {
             $$parsedSource["exportIssues"] = $$createField3_0($$parsedSource["exportIssues"]);
         }
+        if ("packagingStrategy" in $$parsedSource) {
+            $$parsedSource["packagingStrategy"] = $$createField11_0($$parsedSource["packagingStrategy"]);
+        }
         if ("optimizationNotes" in $$parsedSource) {
-            $$parsedSource["optimizationNotes"] = $$createField13_0($$parsedSource["optimizationNotes"]);
+            $$parsedSource["optimizationNotes"] = $$createField14_0($$parsedSource["optimizationNotes"]);
         }
         if ("blocks" in $$parsedSource) {
-            $$parsedSource["blocks"] = $$createField14_0($$parsedSource["blocks"]);
+            $$parsedSource["blocks"] = $$createField15_0($$parsedSource["blocks"]);
         }
         return new ResumeWorkspace($$parsedSource as Partial<ResumeWorkspace>);
     }
@@ -1287,7 +1344,7 @@ export class RunScopeSummary {
      */
     static createFrom($$source: any = {}): RunScopeSummary {
         const $$createField3_0 = $$createType0;
-        const $$createField4_0 = $$createType30;
+        const $$createField4_0 = $$createType31;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("selectedDocumentIds" in $$parsedSource) {
             $$parsedSource["selectedDocumentIds"] = $$createField3_0($$parsedSource["selectedDocumentIds"]);
@@ -1430,7 +1487,8 @@ const $$createType23 = ProviderDataSummary.createFrom;
 const $$createType24 = $Create.Array($$createType23);
 const $$createType25 = MatchEvidenceSummary.createFrom;
 const $$createType26 = $Create.Array($$createType25);
-const $$createType27 = ResumeBlockSummary.createFrom;
-const $$createType28 = $Create.Array($$createType27);
-const $$createType29 = RunScopeDocumentSummary.createFrom;
-const $$createType30 = $Create.Array($$createType29);
+const $$createType27 = PackagingStrategySummary.createFrom;
+const $$createType28 = ResumeBlockSummary.createFrom;
+const $$createType29 = $Create.Array($$createType28);
+const $$createType30 = RunScopeDocumentSummary.createFrom;
+const $$createType31 = $Create.Array($$createType30);

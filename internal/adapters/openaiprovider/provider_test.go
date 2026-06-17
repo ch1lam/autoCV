@@ -197,10 +197,15 @@ func TestProviderRejectsResultWhenMetadataCannotPersist(t *testing.T) {
 }
 
 func TestResumeRequestPayloadIncludesConfirmations(t *testing.T) {
+	strategy, found := domain.ResumePackagingStrategyForLevel(1)
+	if !found {
+		t.Fatal("expected amplified packaging strategy")
+	}
 	payload := resumeRequestPayload(ports.DraftResumeRequest{
-		Language:       domain.ResumeLanguageChinese,
-		TargetRole:     "后端工程师",
-		PackagingLevel: 0.5,
+		Language:          domain.ResumeLanguageChinese,
+		TargetRole:        "后端工程师",
+		PackagingLevel:    strategy.Level,
+		PackagingStrategy: strategy,
 		Match: domain.MatchAnalysis{
 			Requirements: []domain.MatchRequirement{{
 				ID:         "required-team",
@@ -225,6 +230,11 @@ func TestResumeRequestPayloadIncludesConfirmations(t *testing.T) {
 		t.Fatalf("encode resume payload: %v", err)
 	}
 	var decoded struct {
+		PackagingStrategy struct {
+			ID         string   `json:"id"`
+			Label      string   `json:"label"`
+			Guardrails []string `json:"guardrails"`
+		} `json:"packaging_strategy"`
 		Confirmations []struct {
 			ID            string `json:"id"`
 			RequirementID string `json:"requirement_id"`
@@ -233,6 +243,11 @@ func TestResumeRequestPayloadIncludesConfirmations(t *testing.T) {
 	}
 	if err := json.Unmarshal(contents, &decoded); err != nil {
 		t.Fatalf("decode resume payload: %v", err)
+	}
+	if decoded.PackagingStrategy.ID != "amplified" ||
+		decoded.PackagingStrategy.Label != "强化" ||
+		len(decoded.PackagingStrategy.Guardrails) == 0 {
+		t.Fatalf("unexpected packaging strategy payload %#v", decoded.PackagingStrategy)
 	}
 	if len(decoded.Confirmations) != 1 ||
 		decoded.Confirmations[0].ID != "confirmation-1" ||

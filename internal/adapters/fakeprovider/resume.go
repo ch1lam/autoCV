@@ -28,11 +28,9 @@ func (provider *Provider) DraftResume(
 	if strings.TrimSpace(request.TargetRole) == "" {
 		return domain.ResumeDraft{}, errors.New("resume target role is empty")
 	}
-	if request.PackagingLevel < 0 || request.PackagingLevel > 1 {
-		return domain.ResumeDraft{}, fmt.Errorf(
-			"resume packaging level %.2f is outside 0..1",
-			request.PackagingLevel,
-		)
+	strategy, err := draftPackagingStrategy(request)
+	if err != nil {
+		return domain.ResumeDraft{}, err
 	}
 
 	ranked := rankResumeEvidence(request.Match, request.Evidence)
@@ -42,7 +40,7 @@ func (provider *Provider) DraftResume(
 			"match analysis has no grounded evidence or user confirmations for resume drafting",
 		)
 	}
-	limit := 4 + int(request.PackagingLevel*4)
+	limit := strategy.EvidenceLimit
 	if limit > len(ranked) {
 		limit = len(ranked)
 	}
@@ -72,6 +70,11 @@ func (provider *Provider) DraftResume(
 			Optimization:      summaryOptimization,
 		}},
 		OptimizationNotes: []string{
+			fmt.Sprintf(
+				"包装档位：%s。%s",
+				strategy.Label,
+				strategy.Description,
+			),
 			fmt.Sprintf(
 				"按当前匹配结果选择 %d 条来源证据，并按岗位相关度排序。",
 				len(ranked),
@@ -116,6 +119,29 @@ func (provider *Provider) DraftResume(
 		)
 	}
 	return draft, nil
+}
+
+func draftPackagingStrategy(
+	request ports.DraftResumeRequest,
+) (domain.ResumePackagingStrategy, error) {
+	if request.PackagingStrategy.ID != "" {
+		if request.PackagingStrategy.EvidenceLimit <= 0 {
+			return domain.ResumePackagingStrategy{}, errors.New(
+				"resume packaging strategy evidence limit is invalid",
+			)
+		}
+		return request.PackagingStrategy, nil
+	}
+	strategy, found := domain.ResumePackagingStrategyForLevel(
+		request.PackagingLevel,
+	)
+	if !found {
+		return domain.ResumePackagingStrategy{}, fmt.Errorf(
+			"resume packaging level %.2f is not a supported strategy",
+			request.PackagingLevel,
+		)
+	}
+	return strategy, nil
 }
 
 func rankResumeEvidence(

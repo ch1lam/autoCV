@@ -27,21 +27,32 @@ type ResumeService struct {
 }
 
 type ResumeWorkspace struct {
-	Status            string               `json:"status"`
-	Message           string               `json:"message"`
-	CanExport         bool                 `json:"canExport"`
-	ExportIssues      []string             `json:"exportIssues"`
-	RunID             string               `json:"runId"`
-	ResumeID          string               `json:"resumeId"`
-	Version           int                  `json:"version"`
-	Language          string               `json:"language"`
-	TargetRole        string               `json:"targetRole"`
-	PackagingLevel    float64              `json:"packagingLevel"`
-	PackagingLabel    string               `json:"packagingLabel"`
-	Markdown          string               `json:"markdown"`
-	UpdatedAt         string               `json:"updatedAt"`
-	OptimizationNotes []string             `json:"optimizationNotes"`
-	Blocks            []ResumeBlockSummary `json:"blocks"`
+	Status            string                   `json:"status"`
+	Message           string                   `json:"message"`
+	CanExport         bool                     `json:"canExport"`
+	ExportIssues      []string                 `json:"exportIssues"`
+	RunID             string                   `json:"runId"`
+	ResumeID          string                   `json:"resumeId"`
+	Version           int                      `json:"version"`
+	Language          string                   `json:"language"`
+	TargetRole        string                   `json:"targetRole"`
+	PackagingLevel    float64                  `json:"packagingLevel"`
+	PackagingLabel    string                   `json:"packagingLabel"`
+	PackagingStrategy PackagingStrategySummary `json:"packagingStrategy"`
+	Markdown          string                   `json:"markdown"`
+	UpdatedAt         string                   `json:"updatedAt"`
+	OptimizationNotes []string                 `json:"optimizationNotes"`
+	Blocks            []ResumeBlockSummary     `json:"blocks"`
+}
+
+type PackagingStrategySummary struct {
+	ID               string   `json:"id"`
+	Label            string   `json:"label"`
+	Description      string   `json:"description"`
+	LanguageStrength string   `json:"languageStrength"`
+	SelectionPolicy  string   `json:"selectionPolicy"`
+	InferencePolicy  string   `json:"inferencePolicy"`
+	Guardrails       []string `json:"guardrails"`
 }
 
 type ResumeBlockSummary struct {
@@ -88,11 +99,12 @@ func (service *ResumeService) currentReadyResume(
 			"resume has not been generated",
 		)
 	}
+	strategy := resumePackagingStrategyForDisplay(run.PackagingLevel)
 	expectedHash, err := hashResumeInput(
 		input.match,
 		input.confirmations,
 		run.Language,
-		run.PackagingLevel,
+		strategy,
 	)
 	if err != nil {
 		return domain.ResumeRun{}, domain.Resume{}, err
@@ -158,11 +170,12 @@ func (service *ResumeService) GetWorkspace() (ResumeWorkspace, error) {
 			Blocks:       make([]ResumeBlockSummary, 0),
 		}, nil
 	}
+	strategy := resumePackagingStrategyForDisplay(run.PackagingLevel)
 	expectedHash, err := hashResumeInput(
 		input.match,
 		input.confirmations,
 		run.Language,
-		run.PackagingLevel,
+		strategy,
 	)
 	if err != nil {
 		return ResumeWorkspace{}, err
@@ -185,7 +198,8 @@ func (service *ResumeService) GetWorkspace() (ResumeWorkspace, error) {
 			Language:          string(run.Language),
 			TargetRole:        resume.TargetRole,
 			PackagingLevel:    run.PackagingLevel,
-			PackagingLabel:    resumePackagingLabel(run.PackagingLevel),
+			PackagingLabel:    strategy.Label,
+			PackagingStrategy: packagingStrategySummary(strategy),
 			Markdown:          resume.Markdown,
 			UpdatedAt:         resume.CreatedAt.UTC().Format(timeFormat),
 			OptimizationNotes: resume.OptimizationNotes,
@@ -219,6 +233,13 @@ func (service *ResumeService) Generate(
 			packagingLevel,
 		)
 	}
+	strategy, found := domain.ResumePackagingStrategyForLevel(packagingLevel)
+	if !found {
+		return ResumeWorkspace{}, fmt.Errorf(
+			"resume packaging level %.2f is not a supported strategy",
+			packagingLevel,
+		)
+	}
 
 	ctx := context.Background()
 	input, blocked, err := service.prepareInput(ctx)
@@ -231,12 +252,13 @@ func (service *ResumeService) Generate(
 	draft, err := service.drafter.DraftResume(
 		ctx,
 		ports.DraftResumeRequest{
-			Language:       resumeLanguage,
-			TargetRole:     input.role,
-			PackagingLevel: packagingLevel,
-			Match:          input.match,
-			Evidence:       input.evidence,
-			Confirmations:  input.confirmations,
+			Language:          resumeLanguage,
+			TargetRole:        input.role,
+			PackagingLevel:    strategy.Level,
+			PackagingStrategy: strategy,
+			Match:             input.match,
+			Evidence:          input.evidence,
+			Confirmations:     input.confirmations,
 		},
 	)
 	if err != nil {
@@ -265,7 +287,7 @@ func (service *ResumeService) Generate(
 	}
 	run.Status = "active"
 	run.Stage = string(workflow.StageDrafted)
-	run.PackagingLevel = packagingLevel
+	run.PackagingLevel = strategy.Level
 	run.Language = resumeLanguage
 	run.UpdatedAt = now
 
@@ -277,7 +299,7 @@ func (service *ResumeService) Generate(
 		input.match,
 		input.confirmations,
 		resumeLanguage,
-		packagingLevel,
+		strategy,
 	)
 	if err != nil {
 		return ResumeWorkspace{}, err
@@ -369,11 +391,12 @@ func (service *ResumeService) updateCurrentResume(
 	if !found {
 		return ResumeWorkspace{}, errors.New("resume has not been generated")
 	}
+	strategy := resumePackagingStrategyForDisplay(run.PackagingLevel)
 	expectedHash, err := hashResumeInput(
 		input.match,
 		input.confirmations,
 		run.Language,
-		run.PackagingLevel,
+		strategy,
 	)
 	if err != nil {
 		return ResumeWorkspace{}, err
@@ -531,24 +554,24 @@ func hashResumeInput(
 	match domain.MatchAnalysis,
 	confirmations []domain.RunConfirmation,
 	language domain.ResumeLanguage,
-	packagingLevel float64,
+	packagingStrategy domain.ResumePackagingStrategy,
 ) (string, error) {
 	contents, err := json.Marshal(struct {
-		MatchID        string
-		MatchInput     string
-		Requirements   []domain.MatchRequirement
-		Suggestions    []domain.MatchSuggestion
-		Confirmations  []domain.RunConfirmation
-		Language       domain.ResumeLanguage
-		PackagingLevel float64
+		MatchID           string
+		MatchInput        string
+		Requirements      []domain.MatchRequirement
+		Suggestions       []domain.MatchSuggestion
+		Confirmations     []domain.RunConfirmation
+		Language          domain.ResumeLanguage
+		PackagingStrategy domain.ResumePackagingStrategy
 	}{
-		MatchID:        match.ID,
-		MatchInput:     match.InputHash,
-		Requirements:   match.Requirements,
-		Suggestions:    match.Suggestions,
-		Confirmations:  confirmations,
-		Language:       language,
-		PackagingLevel: packagingLevel,
+		MatchID:           match.ID,
+		MatchInput:        match.InputHash,
+		Requirements:      match.Requirements,
+		Suggestions:       match.Suggestions,
+		Confirmations:     confirmations,
+		Language:          language,
+		PackagingStrategy: packagingStrategy,
 	})
 	if err != nil {
 		return "", fmt.Errorf("encode resume input: %w", err)
@@ -644,6 +667,7 @@ func resumeWorkspaceFrom(
 	evidence []domain.Evidence,
 ) ResumeWorkspace {
 	exportIssues := domain.ResumeExportIssues(resume)
+	strategy := resumePackagingStrategyForDisplay(run.PackagingLevel)
 	return ResumeWorkspace{
 		Status:            "ready",
 		Message:           "结构化简历、Markdown 与来源引用已保存到本地。",
@@ -655,7 +679,8 @@ func resumeWorkspaceFrom(
 		Language:          string(resume.Language),
 		TargetRole:        resume.TargetRole,
 		PackagingLevel:    run.PackagingLevel,
-		PackagingLabel:    resumePackagingLabel(run.PackagingLevel),
+		PackagingLabel:    strategy.Label,
+		PackagingStrategy: packagingStrategySummary(strategy),
 		Markdown:          resume.Markdown,
 		UpdatedAt:         resume.CreatedAt.UTC().Format(timeFormat),
 		OptimizationNotes: append([]string(nil), resume.OptimizationNotes...),
@@ -716,6 +741,32 @@ func resumeBlockKindLabel(kind domain.ResumeBlockKind) string {
 }
 
 func resumePackagingLabel(level float64) string {
+	return resumePackagingStrategyForDisplay(level).Label
+}
+
+func resumePackagingStrategyForDisplay(
+	level float64,
+) domain.ResumePackagingStrategy {
+	if strategy, found := domain.ResumePackagingStrategyForLevel(level); found {
+		return strategy
+	}
+	return domain.ResumePackagingStrategy{
+		ID:               "custom",
+		Level:            level,
+		Label:            resumePackagingLabelFallback(level),
+		Description:      "历史版本使用的自定义包装强度。",
+		EvidenceLimit:    6,
+		LanguageStrength: "按历史包装参数保持生成结果。",
+		SelectionPolicy:  "按历史包装参数选择内容。",
+		InferencePolicy:  "仍遵守不新增事实和不写入未确认数字的边界。",
+		Guardrails: []string{
+			"不新增职责、技术或结果。",
+			"不写入未经确认的数字。",
+		},
+	}
+}
+
+func resumePackagingLabelFallback(level float64) string {
 	switch {
 	case level < 0.34:
 		return "保守"
@@ -723,6 +774,20 @@ func resumePackagingLabel(level float64) string {
 		return "平衡"
 	default:
 		return "强化"
+	}
+}
+
+func packagingStrategySummary(
+	strategy domain.ResumePackagingStrategy,
+) PackagingStrategySummary {
+	return PackagingStrategySummary{
+		ID:               strategy.ID,
+		Label:            strategy.Label,
+		Description:      strategy.Description,
+		LanguageStrength: strategy.LanguageStrength,
+		SelectionPolicy:  strategy.SelectionPolicy,
+		InferencePolicy:  strategy.InferencePolicy,
+		Guardrails:       append([]string(nil), strategy.Guardrails...),
 	}
 }
 
