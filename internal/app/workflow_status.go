@@ -97,14 +97,18 @@ func (service *WorkflowService) GetStatus() (WorkflowStatus, error) {
 }
 
 func (service *WorkflowService) RerunStage(stage string) (WorkflowStatus, error) {
-	normalizedStage := workflow.Stage(strings.TrimSpace(stage))
-	if normalizedStage == workflow.StageRequiresUserInput {
-		normalizedStage = workflow.StageMatched
-	}
-	if !normalizedStage.Valid() {
+	requestedStage := workflow.Stage(strings.TrimSpace(stage))
+	if !requestedStage.Valid() {
 		return WorkflowStatus{}, fmt.Errorf(
 			"invalid workflow stage %q",
 			stage,
+		)
+	}
+	normalizedStage, canRerun := workflow.RerunTarget(requestedStage)
+	if !canRerun {
+		return WorkflowStatus{}, fmt.Errorf(
+			"workflow stage %s cannot be rerun directly",
+			requestedStage,
 		)
 	}
 
