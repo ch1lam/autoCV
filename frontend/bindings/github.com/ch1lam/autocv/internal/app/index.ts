@@ -53,6 +53,7 @@ export {
     SaveEvidenceInput,
     SaveProviderInput,
     SourceDocumentSummary,
+    WorkflowStageEvent,
     WorkflowStageSummary,
     WorkflowStatus
 } from "./models.js";

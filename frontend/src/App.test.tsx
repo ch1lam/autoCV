@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -34,36 +40,57 @@ const {
   setResumeBlockLockedMock,
   skipClarificationMock,
   updateResumeMarkdownMock,
-} = vi.hoisted(() => ({
-  analyzeMatchesMock: vi.fn(),
-  analyzeJDMock: vi.fn(),
-  answerClarificationMock: vi.fn(),
-  cancelActiveProviderMock: vi.fn(),
-  createProfileMock: vi.fn(),
-  exportMarkdownMock: vi.fn(),
-  exportPDFMock: vi.fn(),
-  exportProfileMock: vi.fn(),
-  generateResumeMock: vi.fn(),
-  getJDWorkspaceMock: vi.fn(),
-  getMatchReviewMock: vi.fn(),
-  getOverviewMock: vi.fn(),
-  getPDFWorkspaceMock: vi.fn(),
-  getResumeWorkspaceMock: vi.fn(),
-  getSettingsMock: vi.fn(),
-  getWorkflowStatusMock: vi.fn(),
-  importMarkdownMock: vi.fn(),
-  renderPDFMock: vi.fn(),
-  rerunWorkflowStageMock: vi.fn(),
-  resolveEvidenceConflictMock: vi.fn(),
-  saveJDDraftMock: vi.fn(),
-  saveEvidenceMock: vi.fn(),
-  saveProviderMock: vi.fn(),
-  saveRunScopeMock: vi.fn(),
-  searchProfileMock: vi.fn(),
-  selectProfileMock: vi.fn(),
-  setResumeBlockLockedMock: vi.fn(),
-  skipClarificationMock: vi.fn(),
-  updateResumeMarkdownMock: vi.fn(),
+  workflowEventHandlers,
+  workflowEventOffMock,
+  workflowEventOnMock,
+} = vi.hoisted(() => {
+  const handlers: Array<(event: { data: unknown }) => void> = [];
+  const offMock = vi.fn();
+  return {
+    analyzeMatchesMock: vi.fn(),
+    analyzeJDMock: vi.fn(),
+    answerClarificationMock: vi.fn(),
+    cancelActiveProviderMock: vi.fn(),
+    createProfileMock: vi.fn(),
+    exportMarkdownMock: vi.fn(),
+    exportPDFMock: vi.fn(),
+    exportProfileMock: vi.fn(),
+    generateResumeMock: vi.fn(),
+    getJDWorkspaceMock: vi.fn(),
+    getMatchReviewMock: vi.fn(),
+    getOverviewMock: vi.fn(),
+    getPDFWorkspaceMock: vi.fn(),
+    getResumeWorkspaceMock: vi.fn(),
+    getSettingsMock: vi.fn(),
+    getWorkflowStatusMock: vi.fn(),
+    importMarkdownMock: vi.fn(),
+    renderPDFMock: vi.fn(),
+    rerunWorkflowStageMock: vi.fn(),
+    resolveEvidenceConflictMock: vi.fn(),
+    saveJDDraftMock: vi.fn(),
+    saveEvidenceMock: vi.fn(),
+    saveProviderMock: vi.fn(),
+    saveRunScopeMock: vi.fn(),
+    searchProfileMock: vi.fn(),
+    selectProfileMock: vi.fn(),
+    setResumeBlockLockedMock: vi.fn(),
+    skipClarificationMock: vi.fn(),
+    updateResumeMarkdownMock: vi.fn(),
+    workflowEventHandlers: handlers,
+    workflowEventOffMock: offMock,
+    workflowEventOnMock: vi.fn(
+      (_eventName: string, callback: (event: { data: unknown }) => void) => {
+        handlers.push(callback);
+        return offMock;
+      },
+    ),
+  };
+});
+
+vi.mock("@wailsio/runtime", () => ({
+  Events: {
+    On: workflowEventOnMock,
+  },
 }));
 
 vi.mock("../bindings/github.com/ch1lam/autocv/internal/app", () => ({
@@ -634,6 +661,9 @@ const providerSettings = {
 
 describe("Paper Trail match review", () => {
   beforeEach(() => {
+    workflowEventHandlers.length = 0;
+    workflowEventOffMock.mockClear();
+    workflowEventOnMock.mockClear();
     analyzeMatchesMock.mockReset().mockResolvedValue(matchReview);
     analyzeJDMock.mockReset().mockResolvedValue(jdWorkspace);
     cancelActiveProviderMock.mockReset().mockResolvedValue({
@@ -800,6 +830,46 @@ describe("Paper Trail match review", () => {
     expect(within(workflowCard).getByText(/Run run-1234/)).toBeInTheDocument();
     expect(within(workflowCard).getByText("匹配")).toBeInTheDocument();
     expect(within(workflowCard).getByText("生成")).toBeInTheDocument();
+  });
+
+  it("refreshes workflow status when a stage event arrives", async () => {
+    render(<App />);
+
+    await screen.findByRole("region", {
+      name: "工作流恢复状态",
+    });
+    expect(workflowEventOnMock).toHaveBeenCalledWith(
+      "workflow.stage.updated",
+      expect.any(Function),
+    );
+
+    getWorkflowStatusMock.mockResolvedValueOnce({
+      ...workflowStatus,
+      currentStage: "drafted",
+      stages: workflowStatus.stages.map((stage) =>
+        stage.stage === "drafted"
+          ? {
+              ...stage,
+              status: "running",
+              hasError: false,
+              errorMessage: "",
+            }
+          : stage,
+      ),
+    });
+    workflowEventHandlers[0]?.({
+      data: {
+        runId: workflowStatus.runId,
+        stage: "drafted",
+        status: "running",
+        message: "",
+        updatedAt: "2026-06-11T04:01:00Z",
+      },
+    });
+
+    await waitFor(() => expect(getWorkflowStatusMock).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("生成阶段")).toBeInTheDocument();
+    expect(screen.getByText(/运行中/)).toBeInTheDocument();
   });
 
   it("retries a failed workflow stage from the recovery card", async () => {

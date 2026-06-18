@@ -9,6 +9,16 @@ import (
 	"github.com/ch1lam/autocv/internal/workflow"
 )
 
+type recordingWorkflowEvents struct {
+	events []WorkflowStageEvent
+}
+
+func (recorder *recordingWorkflowEvents) EmitWorkflowStage(
+	event WorkflowStageEvent,
+) {
+	recorder.events = append(recorder.events, event)
+}
+
 func TestWorkflowServiceRestoresLatestRunStages(t *testing.T) {
 	fixture := newMatchServiceFixture(t, fakeprovider.New())
 	fixture.importProfile(t)
@@ -138,6 +148,7 @@ func TestWorkflowServiceRerunsDraftStage(t *testing.T) {
 		t.Fatalf("expected first resume version, got %#v", generated)
 	}
 
+	eventRecorder := &recordingWorkflowEvents{}
 	rerunService := NewResumeService(
 		fixture.scopeRepository,
 		fixture.stageRepository,
@@ -147,6 +158,7 @@ func TestWorkflowServiceRerunsDraftStage(t *testing.T) {
 		fixture.jdRepository,
 		fakeprovider.New(),
 		fixedClock{now: profileTestTime.Add(3 * time.Hour)},
+		eventRecorder,
 	)
 	workflowService := NewWorkflowService(
 		fixture.scopeRepository,
@@ -183,6 +195,12 @@ func TestWorkflowServiceRerunsDraftStage(t *testing.T) {
 	}
 	if !found || resume.Version != 2 {
 		t.Fatalf("expected forced rerun to create version 2, found=%v %#v", found, resume)
+	}
+	if len(eventRecorder.events) != 2 ||
+		eventRecorder.events[0].Stage != string(workflow.StageDrafted) ||
+		eventRecorder.events[0].Status != string(workflow.StageStatusRunning) ||
+		eventRecorder.events[1].Status != string(workflow.StageStatusSucceeded) {
+		t.Fatalf("unexpected workflow events %#v", eventRecorder.events)
 	}
 }
 

@@ -1459,6 +1459,43 @@ export class SourceDocumentSummary {
     }
 }
 
+export class WorkflowStageEvent {
+    "runId": string;
+    "stage": string;
+    "status": string;
+    "message": string;
+    "updatedAt": string;
+
+    /** Creates a new WorkflowStageEvent instance. */
+    constructor($$source: Partial<WorkflowStageEvent> = {}) {
+        if (!("runId" in $$source)) {
+            this["runId"] = "";
+        }
+        if (!("stage" in $$source)) {
+            this["stage"] = "";
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+        if (!("updatedAt" in $$source)) {
+            this["updatedAt"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new WorkflowStageEvent instance from a string or object.
+     */
+    static createFrom($$source: any = {}): WorkflowStageEvent {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new WorkflowStageEvent($$parsedSource as Partial<WorkflowStageEvent>);
+    }
+}
+
 export class WorkflowStageSummary {
     "stage": string;
     "status": string;

@@ -27,6 +27,7 @@ type PDFService struct {
 	renderer  ports.ResumeRenderer
 	picker    ports.ExportPicker
 	clock     ports.Clock
+	events    WorkflowEventSink
 }
 
 type PDFWorkspace struct {
@@ -58,6 +59,7 @@ func NewPDFService(
 	renderer ports.ResumeRenderer,
 	picker ports.ExportPicker,
 	clock ports.Clock,
+	workflowEvents ...WorkflowEventSink,
 ) *PDFService {
 	return &PDFService{
 		resumes:   resumes,
@@ -66,6 +68,7 @@ func NewPDFService(
 		renderer:  renderer,
 		picker:    picker,
 		clock:     clock,
+		events:    workflowEventSinkFrom(workflowEvents),
 	}
 }
 
@@ -396,7 +399,16 @@ func (service *PDFService) savePDFRenderStageResult(
 			slog.String("status", string(status)),
 			slog.Any("error", err),
 		)
+		return
 	}
+	emitWorkflowStageEvent(
+		service.events,
+		runID,
+		workflow.StageRendered,
+		status,
+		errorJSON,
+		now,
+	)
 }
 
 func hashPDFRenderInput(resume domain.Resume) string {

@@ -28,6 +28,23 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+func init() {
+	application.RegisterEvent[appservice.WorkflowStageEvent]("workflow.stage.updated")
+}
+
+type wailsWorkflowEvents struct {
+	app *application.App
+}
+
+func (events wailsWorkflowEvents) EmitWorkflowStage(
+	event appservice.WorkflowStageEvent,
+) {
+	if events.app == nil {
+		return
+	}
+	events.app.Event.Emit(appservice.WorkflowStageUpdatedEvent, event)
+}
+
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintf(os.Stderr, "AutoCV failed: %v\n", err)
@@ -108,6 +125,7 @@ func run() error {
 		fakeprovider.New(),
 		openAIProvider,
 	)
+	workflowEvents := wailsWorkflowEvents{app: app}
 	app.RegisterService(application.NewService(
 		appservice.NewProviderControlService(provider),
 	))
@@ -161,6 +179,7 @@ func run() error {
 		jdRepository,
 		provider,
 		systemclock.Clock{},
+		workflowEvents,
 	)
 	resumeService := appservice.NewResumeService(
 		resumeRepository,
@@ -171,6 +190,7 @@ func run() error {
 		jdRepository,
 		provider,
 		systemclock.Clock{},
+		workflowEvents,
 	)
 	pdfService := appservice.NewPDFService(
 		resumeService,
@@ -182,6 +202,7 @@ func run() error {
 		),
 		exportPicker,
 		systemclock.Clock{},
+		workflowEvents,
 	)
 	app.RegisterService(application.NewService(matchService))
 	app.RegisterService(application.NewService(appservice.NewWorkflowService(

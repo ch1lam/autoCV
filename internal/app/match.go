@@ -31,6 +31,7 @@ type MatchService struct {
 	jdRepository            ports.JDRepository
 	suggester               ports.MatchSuggester
 	clock                   ports.Clock
+	workflowEvents          WorkflowEventSink
 }
 
 type MatchReview struct {
@@ -141,6 +142,7 @@ func NewMatchService(
 	jdRepository ports.JDRepository,
 	suggester ports.MatchSuggester,
 	clock ports.Clock,
+	workflowEvents ...WorkflowEventSink,
 ) *MatchService {
 	return &MatchService{
 		matchRepository:         matchRepository,
@@ -153,6 +155,7 @@ func NewMatchService(
 		jdRepository:            jdRepository,
 		suggester:               suggester,
 		clock:                   clock,
+		workflowEvents:          workflowEventSinkFrom(workflowEvents),
 	}
 }
 
@@ -864,7 +867,16 @@ func (service *MatchService) saveMatchStageResult(
 			slog.String("status", string(status)),
 			slog.Any("error", err),
 		)
+		return
 	}
+	emitWorkflowStageEvent(
+		service.workflowEvents,
+		runID,
+		workflow.StageMatched,
+		status,
+		errorJSON,
+		now,
+	)
 }
 
 func matchStageResultJSON(

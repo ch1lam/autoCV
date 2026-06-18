@@ -27,6 +27,7 @@ type ResumeService struct {
 	jdRepository           ports.JDRepository
 	drafter                ports.ResumeDrafter
 	clock                  ports.Clock
+	workflowEvents         WorkflowEventSink
 }
 
 type ResumeWorkspace struct {
@@ -135,6 +136,7 @@ func NewResumeService(
 	jdRepository ports.JDRepository,
 	drafter ports.ResumeDrafter,
 	clock ports.Clock,
+	workflowEvents ...WorkflowEventSink,
 ) *ResumeService {
 	return &ResumeService{
 		resumeRepository:       resumeRepository,
@@ -145,6 +147,7 @@ func NewResumeService(
 		jdRepository:           jdRepository,
 		drafter:                drafter,
 		clock:                  clock,
+		workflowEvents:         workflowEventSinkFrom(workflowEvents),
 	}
 }
 
@@ -500,7 +503,16 @@ func (service *ResumeService) saveResumeDraftStageResult(
 			slog.String("status", string(status)),
 			slog.Any("error", err),
 		)
+		return
 	}
+	emitWorkflowStageEvent(
+		service.workflowEvents,
+		runID,
+		workflow.StageDrafted,
+		status,
+		errorJSON,
+		now,
+	)
 }
 
 func resumeDraftStageResultJSON(resume domain.Resume) string {

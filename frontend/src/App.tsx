@@ -15,6 +15,7 @@ import {
     IconUpload,
     IconX,
 } from "@tabler/icons-react";
+import { Events } from "@wailsio/runtime";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -526,6 +527,12 @@ function App() {
     refreshSettings,
     refreshWorkflow,
   ]);
+
+  useEffect(() => {
+    return Events.On("workflow.stage.updated", () => {
+      void refreshWorkflow();
+    });
+  }, [refreshWorkflow]);
 
   const showNotice = (message: string) => {
     setNotice(message);
