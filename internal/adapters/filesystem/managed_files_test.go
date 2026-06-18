@@ -81,6 +81,36 @@ func TestManagedFilesSavesDOCX(t *testing.T) {
 	}
 }
 
+func TestManagedFilesSavesSourcePDF(t *testing.T) {
+	root := t.TempDir()
+	store, err := NewManagedFiles(root)
+	if err != nil {
+		t.Fatalf("create managed file store: %v", err)
+	}
+	contents := []byte("%PDF-1.4\nsynthetic source")
+
+	managedPath, err := store.SavePDF(
+		"profile-1",
+		"document-1",
+		contents,
+	)
+	if err != nil {
+		t.Fatalf("save source PDF: %v", err)
+	}
+	expectedPath := "sources/profile-1/document-1/source.pdf"
+	if managedPath != expectedPath {
+		t.Fatalf("expected path %q, got %q", expectedPath, managedPath)
+	}
+
+	actual, err := store.Read(managedPath)
+	if err != nil {
+		t.Fatalf("read source PDF: %v", err)
+	}
+	if string(actual) != string(contents) {
+		t.Fatalf("managed source PDF differs")
+	}
+}
+
 func TestManagedFilesRejectsPathTraversal(t *testing.T) {
 	store, err := NewManagedFiles(t.TempDir())
 	if err != nil {
@@ -115,6 +145,12 @@ func TestManagedFilesRejectsUnsafeIDs(t *testing.T) {
 	}
 	if _, err := store.SaveDOCX("profile", "nested/document", nil); err == nil {
 		t.Fatal("expected unsafe DOCX document id error")
+	}
+	if _, err := store.SavePDF("../profile", "document", nil); err == nil {
+		t.Fatal("expected unsafe PDF profile id error")
+	}
+	if _, err := store.SavePDF("profile", "nested/document", nil); err == nil {
+		t.Fatal("expected unsafe PDF document id error")
 	}
 }
 

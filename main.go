@@ -17,6 +17,7 @@ import (
 	"github.com/ch1lam/autocv/internal/adapters/logging"
 	markdownparser "github.com/ch1lam/autocv/internal/adapters/markdown"
 	"github.com/ch1lam/autocv/internal/adapters/openaiprovider"
+	pdftextparser "github.com/ch1lam/autocv/internal/adapters/pdftext"
 	"github.com/ch1lam/autocv/internal/adapters/providerrouter"
 	"github.com/ch1lam/autocv/internal/adapters/sqlite"
 	"github.com/ch1lam/autocv/internal/adapters/systemclock"
@@ -140,10 +141,12 @@ func run() error {
 		sqlite.NewProfileSearch(db),
 		markdownparser.New(),
 		docxparser.New(),
+		pdftextparser.New(),
 		provider,
 		managedFiles,
 		wailsdialog.NewMarkdownPicker(app),
 		wailsdialog.NewDOCXPicker(app),
+		wailsdialog.NewSourcePDFPicker(app),
 		exportPicker,
 		systemclock.Clock{},
 	)))

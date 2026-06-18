@@ -27,10 +27,12 @@ type ProfileService struct {
 	search     ports.ProfileSearch
 	parser     ports.DocumentParser
 	docxParser ports.DocumentParser
+	pdfParser  ports.DocumentParser
 	extractor  ports.ProfileExtractor
 	files      ports.ManagedFileStore
 	picker     ports.MarkdownPicker
 	docxPicker ports.DOCXPicker
+	pdfPicker  ports.PDFPicker
 	exporter   ports.ProfileExportPicker
 	clock      ports.Clock
 }
@@ -153,10 +155,12 @@ func NewProfileService(
 	search ports.ProfileSearch,
 	parser ports.DocumentParser,
 	docxParser ports.DocumentParser,
+	pdfParser ports.DocumentParser,
 	extractor ports.ProfileExtractor,
 	files ports.ManagedFileStore,
 	picker ports.MarkdownPicker,
 	docxPicker ports.DOCXPicker,
+	pdfPicker ports.PDFPicker,
 	exporter ports.ProfileExportPicker,
 	clock ports.Clock,
 ) *ProfileService {
@@ -165,10 +169,12 @@ func NewProfileService(
 		search:     search,
 		parser:     parser,
 		docxParser: docxParser,
+		pdfParser:  pdfParser,
 		extractor:  extractor,
 		files:      files,
 		picker:     picker,
 		docxPicker: docxPicker,
+		pdfPicker:  pdfPicker,
 		exporter:   exporter,
 		clock:      clock,
 	}
@@ -254,6 +260,27 @@ func (service *ProfileService) ImportDOCX() (ImportMarkdownResult, error) {
 			contents:     selected.Contents,
 			parser:       service.docxParser,
 			save:         service.files.SaveDOCX,
+		},
+	)
+}
+
+func (service *ProfileService) ImportPDF() (ImportMarkdownResult, error) {
+	selected, accepted, err := service.pdfPicker.PickSourcePDF()
+	if err != nil {
+		return ImportMarkdownResult{}, err
+	}
+	if !accepted {
+		return ImportMarkdownResult{Cancelled: true}, nil
+	}
+	return service.importDocument(
+		context.Background(),
+		profileImportDocument{
+			kind:         "pdf",
+			label:        "PDF",
+			originalName: selected.OriginalName,
+			contents:     selected.Contents,
+			parser:       service.pdfParser,
+			save:         service.files.SavePDF,
 		},
 	)
 }

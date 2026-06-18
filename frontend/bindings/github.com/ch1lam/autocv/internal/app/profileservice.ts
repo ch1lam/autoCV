@@ -39,6 +39,12 @@ export function ImportMarkdown(): $CancellablePromise<$models.ImportMarkdownResu
     });
 }
 
+export function ImportPDF(): $CancellablePromise<$models.ImportMarkdownResult> {
+    return $Call.ByID(3724798168).then(($result: any) => {
+        return $$createType2($result);
+    });
+}
+
 export function ResolveEvidenceConflict(evidenceID: string): $CancellablePromise<$models.ProfileOverview> {
     return $Call.ByID(50641302, evidenceID).then(($result: any) => {
         return $$createType0($result);

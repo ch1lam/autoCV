@@ -14,6 +14,7 @@ import (
 	"github.com/ch1lam/autocv/internal/adapters/fakeprovider"
 	"github.com/ch1lam/autocv/internal/adapters/filesystem"
 	markdownparser "github.com/ch1lam/autocv/internal/adapters/markdown"
+	pdftextparser "github.com/ch1lam/autocv/internal/adapters/pdftext"
 	sqliteadapter "github.com/ch1lam/autocv/internal/adapters/sqlite"
 	"github.com/ch1lam/autocv/internal/domain"
 	"github.com/ch1lam/autocv/internal/ports"
@@ -749,6 +750,7 @@ func newMatchServiceFixtureFromFiles(
 		sqliteadapter.NewProfileSearch(db),
 		markdownparser.New(),
 		docxparser.New(),
+		pdftextparser.New(),
 		provider,
 		files,
 		fakeMarkdownPicker{
@@ -759,6 +761,7 @@ func newMatchServiceFixtureFromFiles(
 			accepted: true,
 		},
 		fakeDOCXPicker{},
+		fakePDFPicker{},
 		fixedProfileExportPicker{},
 		fixedClock{now: profileTestTime},
 	)

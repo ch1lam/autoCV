@@ -6,9 +6,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +19,7 @@ import (
 	"github.com/ch1lam/autocv/internal/adapters/fakeprovider"
 	"github.com/ch1lam/autocv/internal/adapters/filesystem"
 	markdownparser "github.com/ch1lam/autocv/internal/adapters/markdown"
+	pdftextparser "github.com/ch1lam/autocv/internal/adapters/pdftext"
 	sqliteadapter "github.com/ch1lam/autocv/internal/adapters/sqlite"
 	"github.com/ch1lam/autocv/internal/domain"
 	"github.com/ch1lam/autocv/internal/ports"
@@ -54,6 +57,20 @@ type fakeDOCXPicker struct {
 
 func (picker fakeDOCXPicker) PickDOCX() (
 	ports.SelectedDOCX,
+	bool,
+	error,
+) {
+	return picker.selected, picker.accepted, picker.err
+}
+
+type fakePDFPicker struct {
+	selected ports.SelectedPDF
+	accepted bool
+	err      error
+}
+
+func (picker fakePDFPicker) PickSourcePDF() (
+	ports.SelectedPDF,
 	bool,
 	error,
 ) {
@@ -159,10 +176,12 @@ func TestProfileServiceImportsAndRestoresMarkdownProfile(t *testing.T) {
 		service.search,
 		markdownparser.New(),
 		docxparser.New(),
+		pdftextparser.New(),
 		fakeprovider.New(),
 		files,
 		fakeMarkdownPicker{},
 		fakeDOCXPicker{},
+		fakePDFPicker{},
 		fixedProfileExportPicker{},
 		fixedClock{now: profileTestTime.Add(time.Hour)},
 	)
@@ -226,6 +245,59 @@ func TestProfileServiceImportsDOCXProfile(t *testing.T) {
 	}
 	if !bytes.Equal(managedContents, contents) {
 		t.Fatal("managed DOCX differs from selected file")
+	}
+}
+
+func TestProfileServiceImportsPDFProfile(t *testing.T) {
+	service, repository, files, _, _ := newProfileServiceTest(t)
+	contents := profilePDFFixture(t)
+	service.pdfPicker = fakePDFPicker{
+		selected: ports.SelectedPDF{
+			OriginalName: "backend-profile.pdf",
+			Contents:     contents,
+		},
+		accepted: true,
+	}
+
+	result, err := service.ImportPDF()
+	if err != nil {
+		t.Fatalf("import PDF: %v", err)
+	}
+	if result.Cancelled || result.Duplicate {
+		t.Fatalf("expected a new PDF import, got %#v", result)
+	}
+	if result.Document.Kind != "pdf" ||
+		result.Document.OriginalName != "backend-profile.pdf" {
+		t.Fatalf("unexpected PDF document summary %#v", result.Document)
+	}
+	if result.ChunkCount == 0 || result.EvidenceCount == 0 {
+		t.Fatalf("expected PDF chunks and evidence, got %#v", result)
+	}
+
+	overview, err := service.GetOverview()
+	if err != nil {
+		t.Fatalf("get overview: %v", err)
+	}
+	if len(overview.Documents) != 1 ||
+		overview.Documents[0].Kind != "pdf" {
+		t.Fatalf("expected PDF document in overview, got %#v", overview.Documents)
+	}
+	if len(overview.Evidence) == 0 ||
+		len(overview.Evidence[0].Sources) == 0 ||
+		overview.Evidence[0].Sources[0].DocumentName != "backend-profile.pdf" {
+		t.Fatalf("expected PDF source evidence, got %#v", overview.Evidence)
+	}
+
+	documents, err := repository.ListDocuments(context.Background(), overview.ProfileID)
+	if err != nil {
+		t.Fatalf("list documents: %v", err)
+	}
+	managedContents, err := files.Read(documents[0].ManagedPath)
+	if err != nil {
+		t.Fatalf("read managed PDF: %v", err)
+	}
+	if !bytes.Equal(managedContents, contents) {
+		t.Fatal("managed PDF differs from selected file")
 	}
 }
 
@@ -754,6 +826,7 @@ func newProfileServiceTest(t *testing.T) (
 		sqliteadapter.NewProfileSearch(db),
 		markdownparser.New(),
 		docxparser.New(),
+		pdftextparser.New(),
 		fakeprovider.New(),
 		files,
 		fakeMarkdownPicker{
@@ -764,6 +837,7 @@ func newProfileServiceTest(t *testing.T) (
 			accepted: true,
 		},
 		fakeDOCXPicker{},
+		fakePDFPicker{},
 		fixedProfileExportPicker{},
 		fixedClock{now: profileTestTime},
 	)
@@ -798,6 +872,76 @@ func profileDOCXFixture(t *testing.T) []byte {
 	return buffer.Bytes()
 }
 
+func profilePDFFixture(t *testing.T) []byte {
+	t.Helper()
+	var stream bytes.Buffer
+	stream.WriteString("BT\n/F1 12 Tf\n72 720 Td\n")
+	stream.WriteString("(Backend Profile) Tj\n")
+	stream.WriteString("0 -18 Td\n")
+	stream.WriteString("(Built resilient Go APIs.) Tj\n")
+	stream.WriteString("ET\n")
+	return buildProfilePDF(t, []string{stream.String()})
+}
+
+func buildProfilePDF(t *testing.T, streams []string) []byte {
+	t.Helper()
+	if len(streams) == 0 {
+		streams = []string{""}
+	}
+
+	totalObjects := 3 + len(streams)*2
+	pageRefs := make([]string, 0, len(streams))
+	objects := make([]string, totalObjects+1)
+	objects[1] = "<< /Type /Catalog /Pages 2 0 R >>"
+	for index := range streams {
+		pageObjectID := 4 + index*2
+		pageRefs = append(pageRefs, fmt.Sprintf("%d 0 R", pageObjectID))
+	}
+	objects[2] = fmt.Sprintf(
+		"<< /Type /Pages /Kids [%s] /Count %d >>",
+		strings.Join(pageRefs, " "),
+		len(streams),
+	)
+	objects[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
+	for index, stream := range streams {
+		pageObjectID := 4 + index*2
+		contentObjectID := pageObjectID + 1
+		objects[pageObjectID] = fmt.Sprintf(
+			"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents %d 0 R >>",
+			contentObjectID,
+		)
+		objects[contentObjectID] = fmt.Sprintf(
+			"<< /Length %d >>\nstream\n%s\nendstream",
+			len(stream),
+			stream,
+		)
+	}
+
+	var pdf bytes.Buffer
+	pdf.WriteString("%PDF-1.4\n")
+	offsets := make([]int, totalObjects+1)
+	for objectID := 1; objectID <= totalObjects; objectID++ {
+		offsets[objectID] = pdf.Len()
+		pdf.WriteString(strconv.Itoa(objectID))
+		pdf.WriteString(" 0 obj\n")
+		pdf.WriteString(objects[objectID])
+		pdf.WriteString("\nendobj\n")
+	}
+	xrefOffset := pdf.Len()
+	pdf.WriteString("xref\n")
+	pdf.WriteString(fmt.Sprintf("0 %d\n", totalObjects+1))
+	pdf.WriteString("0000000000 65535 f \n")
+	for objectID := 1; objectID <= totalObjects; objectID++ {
+		pdf.WriteString(fmt.Sprintf("%010d 00000 n \n", offsets[objectID]))
+	}
+	pdf.WriteString("trailer\n")
+	pdf.WriteString(fmt.Sprintf("<< /Size %d /Root 1 0 R >>\n", totalObjects+1))
+	pdf.WriteString("startxref\n")
+	pdf.WriteString(strconv.Itoa(xrefOffset))
+	pdf.WriteString("\n%%EOF\n")
+	return pdf.Bytes()
+}
+
 func findEvidenceSummary(
 	t *testing.T,
 	items []EvidenceSummary,
@@ -816,5 +960,6 @@ func findEvidenceSummary(
 var _ ports.Clock = fixedClock{}
 var _ ports.DOCXPicker = fakeDOCXPicker{}
 var _ ports.MarkdownPicker = fakeMarkdownPicker{}
+var _ ports.PDFPicker = fakePDFPicker{}
 var _ ports.ProfileExtractor = (*sequencedProfileExtractor)(nil)
 var _ ports.ProfileRepository = failingSaveRepository{}

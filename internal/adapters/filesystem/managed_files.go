@@ -13,6 +13,7 @@ import (
 const (
 	managedDOCXName     = "source.docx"
 	managedMarkdownName = "source.md"
+	managedPDFName      = "source.pdf"
 )
 
 type ManagedFiles struct {
@@ -52,6 +53,19 @@ func (store *ManagedFiles) SaveDOCX(
 		profileID,
 		documentID,
 		managedDOCXName,
+		contents,
+	)
+}
+
+func (store *ManagedFiles) SavePDF(
+	profileID string,
+	documentID string,
+	contents []byte,
+) (string, error) {
+	return store.saveSourceDocument(
+		profileID,
+		documentID,
+		managedPDFName,
 		contents,
 	)
 }
