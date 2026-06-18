@@ -67,16 +67,25 @@ import SettingsWorkspace, {
 } from "./SettingsWorkspace";
 
 type HealthState = "checking" | "ready" | "preview";
-type ProviderRequestAction = "profile" | "jd" | "match";
+type ProfileImportKind = "docx" | "markdown";
+type ProviderRequestAction = "profileDocx" | "profileMarkdown" | "jd" | "match";
 
 const providerRequestDetails: Record<
   ProviderRequestAction,
   { kicker: string; title: string; items: string[] }
 > = {
-  profile: {
+  profileMarkdown: {
     kicker: "PROFILE EXTRACTION",
     title: "提取 Markdown 中的可追溯 Evidence",
     items: ["按标题切分的 Source Chunk", "Chunk ID 与本地来源定位信息"],
+  },
+  profileDocx: {
+    kicker: "PROFILE EXTRACTION",
+    title: "提取 DOCX 中的可追溯 Evidence",
+    items: [
+      "OOXML 正文、标题、列表和表格文本",
+      "Chunk ID 与本地来源定位信息",
+    ],
   },
   jd: {
     kicker: "JD ANALYSIS",
@@ -633,11 +642,14 @@ function App() {
     }
   };
 
-  const handleProfileImport = async () => {
+  const handleProfileImport = async (kind: ProfileImportKind) => {
     setIsImportingProfile(true);
     setProfileFeedback(null);
     try {
-      const result = await ProfileService.ImportMarkdown();
+      const result =
+        kind === "docx"
+          ? await ProfileService.ImportDOCX()
+          : await ProfileService.ImportMarkdown();
       if (result.cancelled) {
         setProfileFeedback({
           tone: "info",
@@ -774,7 +786,7 @@ function App() {
       ]);
       setProfileFeedback({
         tone: "success",
-        text: `已创建 ${overview.name}，可以开始导入 Markdown 资料。`,
+        text: `已创建 ${overview.name}，可以开始导入 Markdown 或 DOCX 资料。`,
       });
     } catch (error) {
       setProfileManagementError(
@@ -1323,8 +1335,10 @@ function App() {
   };
 
   const executeProviderAction = (action: ProviderRequestAction) => {
-    if (action === "profile") {
-      void handleProfileImport();
+    if (action === "profileDocx") {
+      void handleProfileImport("docx");
+    } else if (action === "profileMarkdown") {
+      void handleProfileImport("markdown");
     } else if (action === "jd") {
       void handleJDAnalyze();
     } else {
@@ -1647,11 +1661,20 @@ function App() {
                 <button
                   className="button button--primary"
                   disabled={isImportingProfile || isExportingProfile}
-                  onClick={() => requestProviderAction("profile")}
+                  onClick={() => requestProviderAction("profileMarkdown")}
                   type="button"
                 >
                   <IconUpload aria-hidden="true" size={18} stroke={1.65} />
                   {isImportingProfile ? "正在导入" : "导入 Markdown"}
+                </button>
+                <button
+                  className="button button--secondary"
+                  disabled={isImportingProfile || isExportingProfile}
+                  onClick={() => requestProviderAction("profileDocx")}
+                  type="button"
+                >
+                  <IconFileText aria-hidden="true" size={18} stroke={1.65} />
+                  导入 DOCX
                 </button>
               </>
             ) : activeNav === "JD 工作区" ? (
@@ -1853,7 +1876,8 @@ function App() {
             feedback={profileFeedback}
             isImporting={isImportingProfile}
             isSavingEvidence={isSavingProfileEvidence}
-            onImport={() => requestProviderAction("profile")}
+            onImportDOCX={() => requestProviderAction("profileDocx")}
+            onImportMarkdown={() => requestProviderAction("profileMarkdown")}
             onRefresh={() => void refreshProfile()}
             onSearch={() => void handleProfileSearch()}
             onSearchChange={handleProfileSearchChange}

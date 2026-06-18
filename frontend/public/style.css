@@ -1442,9 +1442,11 @@ button:focus-visible {
   font-size: 14px;
 }
 
-.profile-heading-action {
+.profile-heading-actions {
   display: none;
   flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
 }
 
 .profile-feedback {
@@ -1830,6 +1832,13 @@ button:focus-visible {
 .library-empty p {
   margin: 7px 0 16px;
   font-size: 12px;
+}
+
+.library-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
 }
 
 .library-empty--compact {
@@ -4799,8 +4808,10 @@ button:focus-visible {
     padding-left: 20px;
   }
 
-  .profile-heading-action {
-    display: inline-flex;
+  .profile-heading-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
   }
 
   .profile-metrics {

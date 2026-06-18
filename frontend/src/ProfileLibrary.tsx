@@ -34,7 +34,8 @@ type ProfileLibraryProps = {
   feedback: ProfileFeedback | null;
   isImporting: boolean;
   isSavingEvidence: boolean;
-  onImport: () => void;
+  onImportDOCX: () => void;
+  onImportMarkdown: () => void;
   onRefresh: () => void;
   onSearch: () => void;
   onSearchChange: (value: string) => void;
@@ -128,7 +129,8 @@ function ProfileLibrary({
   feedback,
   isImporting,
   isSavingEvidence,
-  onImport,
+  onImportDOCX,
+  onImportMarkdown,
   onRefresh,
   onSearch,
   onSearchChange,
@@ -234,26 +236,37 @@ function ProfileLibrary({
           <div>
             <span className="section-kicker">PROFILE LIBRARY</span>
             <h1>{overview?.name ?? "主资料库"}</h1>
-            <p>导入 Markdown 职业资料，检查提取结果并追溯每条证据的来源。</p>
+            <p>导入 Markdown 或 DOCX 职业资料，检查提取结果并追溯每条证据的来源。</p>
           </div>
-          <button
-            className="button button--primary profile-heading-action"
-            disabled={isImporting}
-            onClick={onImport}
-            type="button"
-          >
-            {isImporting ? (
-              <IconRefresh
-                aria-hidden="true"
-                className="is-spinning"
-                size={18}
-                stroke={1.65}
-              />
-            ) : (
-              <IconUpload aria-hidden="true" size={18} stroke={1.65} />
-            )}
-            {isImporting ? "正在导入" : "导入 Markdown"}
-          </button>
+          <div className="profile-heading-actions">
+            <button
+              className="button button--secondary profile-heading-action"
+              disabled={isImporting}
+              onClick={onImportDOCX}
+              type="button"
+            >
+              <IconFileText aria-hidden="true" size={18} stroke={1.65} />
+              导入 DOCX
+            </button>
+            <button
+              className="button button--primary profile-heading-action"
+              disabled={isImporting}
+              onClick={onImportMarkdown}
+              type="button"
+            >
+              {isImporting ? (
+                <IconRefresh
+                  aria-hidden="true"
+                  className="is-spinning"
+                  size={18}
+                  stroke={1.65}
+                />
+              ) : (
+                <IconUpload aria-hidden="true" size={18} stroke={1.65} />
+              )}
+              {isImporting ? "正在导入" : "导入 Markdown"}
+            </button>
+          </div>
         </section>
 
         {feedback && (
@@ -321,7 +334,7 @@ function ProfileLibrary({
               <header>
                 <div>
                   <h2>搜索资料</h2>
-                  <p>同时检索原始 Markdown 片段和已提取的 Evidence。</p>
+                  <p>同时检索原始资料片段和已提取的 Evidence。</p>
                 </div>
                 {searchedQuery && searchStatus !== "loading" && (
                   <span>{searchResults.length} 条结果</span>
@@ -438,19 +451,30 @@ function ProfileLibrary({
 
               {overview.documents.length === 0 ? (
                 <div className="library-empty">
-                  <IconArchive aria-hidden="true" size={28} stroke={1.45} />
-                  <strong>还没有职业资料</strong>
-                  <p>从一份 Markdown 简历开始建立可追溯的 Profile。</p>
-                  <button
-                    className="button button--secondary"
-                    disabled={isImporting}
-                    onClick={onImport}
-                    type="button"
-                  >
-                    <IconUpload aria-hidden="true" size={17} stroke={1.65} />
-                    选择 Markdown
-                  </button>
-                </div>
+	                  <IconArchive aria-hidden="true" size={28} stroke={1.45} />
+	                  <strong>还没有职业资料</strong>
+	                  <p>从一份 Markdown 或 DOCX 简历开始建立可追溯的 Profile。</p>
+	                  <div className="library-empty-actions">
+	                    <button
+	                      className="button button--secondary"
+	                      disabled={isImporting}
+	                      onClick={onImportDOCX}
+	                      type="button"
+	                    >
+	                      <IconFileText aria-hidden="true" size={17} stroke={1.65} />
+	                      选择 DOCX
+	                    </button>
+	                    <button
+	                      className="button button--secondary"
+	                      disabled={isImporting}
+	                      onClick={onImportMarkdown}
+	                      type="button"
+	                    >
+	                      <IconUpload aria-hidden="true" size={17} stroke={1.65} />
+	                      选择 Markdown
+	                    </button>
+	                  </div>
+	                </div>
               ) : (
                 <div className="document-list">
                   <div className="document-list-head" aria-hidden="true">
