@@ -10,7 +10,10 @@ import (
 	"github.com/ch1lam/autocv/internal/ports"
 )
 
-const managedMarkdownName = "source.md"
+const (
+	managedDOCXName     = "source.docx"
+	managedMarkdownName = "source.md"
+)
 
 type ManagedFiles struct {
 	root string
@@ -32,6 +35,33 @@ func (store *ManagedFiles) SaveMarkdown(
 	documentID string,
 	contents []byte,
 ) (string, error) {
+	return store.saveSourceDocument(
+		profileID,
+		documentID,
+		managedMarkdownName,
+		contents,
+	)
+}
+
+func (store *ManagedFiles) SaveDOCX(
+	profileID string,
+	documentID string,
+	contents []byte,
+) (string, error) {
+	return store.saveSourceDocument(
+		profileID,
+		documentID,
+		managedDOCXName,
+		contents,
+	)
+}
+
+func (store *ManagedFiles) saveSourceDocument(
+	profileID string,
+	documentID string,
+	filename string,
+	contents []byte,
+) (string, error) {
 	if err := validatePathID(profileID); err != nil {
 		return "", fmt.Errorf("invalid profile id: %w", err)
 	}
@@ -43,7 +73,7 @@ func (store *ManagedFiles) SaveMarkdown(
 		"sources",
 		profileID,
 		documentID,
-		managedMarkdownName,
+		filename,
 	)
 	absolutePath, err := store.resolve(relativePath)
 	if err != nil {

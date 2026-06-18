@@ -51,6 +51,36 @@ func TestManagedFilesSaveReadAndDelete(t *testing.T) {
 	}
 }
 
+func TestManagedFilesSavesDOCX(t *testing.T) {
+	root := t.TempDir()
+	store, err := NewManagedFiles(root)
+	if err != nil {
+		t.Fatalf("create managed file store: %v", err)
+	}
+	contents := []byte("PK\x03\x04synthetic docx")
+
+	managedPath, err := store.SaveDOCX(
+		"profile-1",
+		"document-1",
+		contents,
+	)
+	if err != nil {
+		t.Fatalf("save DOCX: %v", err)
+	}
+	expectedPath := "sources/profile-1/document-1/source.docx"
+	if managedPath != expectedPath {
+		t.Fatalf("expected path %q, got %q", expectedPath, managedPath)
+	}
+
+	actual, err := store.Read(managedPath)
+	if err != nil {
+		t.Fatalf("read DOCX: %v", err)
+	}
+	if string(actual) != string(contents) {
+		t.Fatalf("managed DOCX differs")
+	}
+}
+
 func TestManagedFilesRejectsPathTraversal(t *testing.T) {
 	store, err := NewManagedFiles(t.TempDir())
 	if err != nil {
@@ -79,6 +109,12 @@ func TestManagedFilesRejectsUnsafeIDs(t *testing.T) {
 	}
 	if _, err := store.SaveMarkdown("profile", "nested/document", nil); err == nil {
 		t.Fatal("expected unsafe document id error")
+	}
+	if _, err := store.SaveDOCX("../profile", "document", nil); err == nil {
+		t.Fatal("expected unsafe DOCX profile id error")
+	}
+	if _, err := store.SaveDOCX("profile", "nested/document", nil); err == nil {
+		t.Fatal("expected unsafe DOCX document id error")
 	}
 }
 

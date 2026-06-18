@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ch1lam/autocv/internal/adapters/configfile"
+	docxparser "github.com/ch1lam/autocv/internal/adapters/docx"
 	"github.com/ch1lam/autocv/internal/adapters/fakeprovider"
 	"github.com/ch1lam/autocv/internal/adapters/filesystem"
 	"github.com/ch1lam/autocv/internal/adapters/keychain"
@@ -138,9 +139,11 @@ func run() error {
 		profileRepository,
 		sqlite.NewProfileSearch(db),
 		markdownparser.New(),
+		docxparser.New(),
 		provider,
 		managedFiles,
 		wailsdialog.NewMarkdownPicker(app),
+		wailsdialog.NewDOCXPicker(app),
 		exportPicker,
 		systemclock.Clock{},
 	)))

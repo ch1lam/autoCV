@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	docxparser "github.com/ch1lam/autocv/internal/adapters/docx"
 	"github.com/ch1lam/autocv/internal/adapters/fakeprovider"
 	markdownparser "github.com/ch1lam/autocv/internal/adapters/markdown"
 	sqliteadapter "github.com/ch1lam/autocv/internal/adapters/sqlite"
@@ -177,9 +178,11 @@ func testM1SyntheticScenario(
 		fixture.profileRepository,
 		sqliteadapter.NewProfileSearch(fixture.db),
 		markdownparser.New(),
+		docxparser.New(),
 		fakeprovider.New(),
 		fixture.files,
 		fakeMarkdownPicker{},
+		fakeDOCXPicker{},
 		fixedProfileExportPicker{},
 		fixedClock{now: profileTestTime.Add(4 * time.Hour)},
 	)

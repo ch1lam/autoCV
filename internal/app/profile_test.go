@@ -1,15 +1,19 @@
 package app
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	docxparser "github.com/ch1lam/autocv/internal/adapters/docx"
 	"github.com/ch1lam/autocv/internal/adapters/fakeprovider"
 	"github.com/ch1lam/autocv/internal/adapters/filesystem"
 	markdownparser "github.com/ch1lam/autocv/internal/adapters/markdown"
@@ -36,6 +40,20 @@ type fakeMarkdownPicker struct {
 
 func (picker fakeMarkdownPicker) PickMarkdown() (
 	ports.SelectedMarkdown,
+	bool,
+	error,
+) {
+	return picker.selected, picker.accepted, picker.err
+}
+
+type fakeDOCXPicker struct {
+	selected ports.SelectedDOCX
+	accepted bool
+	err      error
+}
+
+func (picker fakeDOCXPicker) PickDOCX() (
+	ports.SelectedDOCX,
 	bool,
 	error,
 ) {
@@ -140,9 +158,11 @@ func TestProfileServiceImportsAndRestoresMarkdownProfile(t *testing.T) {
 		repository,
 		service.search,
 		markdownparser.New(),
+		docxparser.New(),
 		fakeprovider.New(),
 		files,
 		fakeMarkdownPicker{},
+		fakeDOCXPicker{},
 		fixedProfileExportPicker{},
 		fixedClock{now: profileTestTime.Add(time.Hour)},
 	)
@@ -153,6 +173,59 @@ func TestProfileServiceImportsAndRestoresMarkdownProfile(t *testing.T) {
 	if len(restored.Documents) != 1 ||
 		len(restored.Evidence) != result.EvidenceCount {
 		t.Fatalf("expected persisted profile data, got %#v", restored)
+	}
+}
+
+func TestProfileServiceImportsDOCXProfile(t *testing.T) {
+	service, repository, files, _, _ := newProfileServiceTest(t)
+	contents := profileDOCXFixture(t)
+	service.docxPicker = fakeDOCXPicker{
+		selected: ports.SelectedDOCX{
+			OriginalName: "backend-profile.docx",
+			Contents:     contents,
+		},
+		accepted: true,
+	}
+
+	result, err := service.ImportDOCX()
+	if err != nil {
+		t.Fatalf("import DOCX: %v", err)
+	}
+	if result.Cancelled || result.Duplicate {
+		t.Fatalf("expected a new DOCX import, got %#v", result)
+	}
+	if result.Document.Kind != "docx" ||
+		result.Document.OriginalName != "backend-profile.docx" {
+		t.Fatalf("unexpected DOCX document summary %#v", result.Document)
+	}
+	if result.ChunkCount == 0 || result.EvidenceCount == 0 {
+		t.Fatalf("expected DOCX chunks and evidence, got %#v", result)
+	}
+
+	overview, err := service.GetOverview()
+	if err != nil {
+		t.Fatalf("get overview: %v", err)
+	}
+	if len(overview.Documents) != 1 ||
+		overview.Documents[0].Kind != "docx" {
+		t.Fatalf("expected DOCX document in overview, got %#v", overview.Documents)
+	}
+	if len(overview.Evidence) == 0 ||
+		len(overview.Evidence[0].Sources) == 0 ||
+		overview.Evidence[0].Sources[0].DocumentName != "backend-profile.docx" {
+		t.Fatalf("expected DOCX source evidence, got %#v", overview.Evidence)
+	}
+
+	documents, err := repository.ListDocuments(context.Background(), overview.ProfileID)
+	if err != nil {
+		t.Fatalf("list documents: %v", err)
+	}
+	managedContents, err := files.Read(documents[0].ManagedPath)
+	if err != nil {
+		t.Fatalf("read managed DOCX: %v", err)
+	}
+	if !bytes.Equal(managedContents, contents) {
+		t.Fatal("managed DOCX differs from selected file")
 	}
 }
 
@@ -680,6 +753,7 @@ func newProfileServiceTest(t *testing.T) (
 		repository,
 		sqliteadapter.NewProfileSearch(db),
 		markdownparser.New(),
+		docxparser.New(),
 		fakeprovider.New(),
 		files,
 		fakeMarkdownPicker{
@@ -689,10 +763,39 @@ func newProfileServiceTest(t *testing.T) (
 			},
 			accepted: true,
 		},
+		fakeDOCXPicker{},
 		fixedProfileExportPicker{},
 		fixedClock{now: profileTestTime},
 	)
 	return service, repository, files, contents, root
+}
+
+func profileDOCXFixture(t *testing.T) []byte {
+	t.Helper()
+	var buffer bytes.Buffer
+	writer := zip.NewWriter(&buffer)
+	document, err := writer.Create("word/document.xml")
+	if err != nil {
+		t.Fatalf("create DOCX document XML: %v", err)
+	}
+	if _, err := io.WriteString(document, `<?xml version="1.0" encoding="UTF-8"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:pPr><w:pStyle w:val="Heading1"/></w:pPr>
+      <w:r><w:t>李志林</w:t></w:r>
+    </w:p>
+    <w:p>
+      <w:r><w:t>负责订单服务稳定性优化，支持核心交易链路。</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>`); err != nil {
+		t.Fatalf("write DOCX document XML: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close DOCX fixture: %v", err)
+	}
+	return buffer.Bytes()
 }
 
 func findEvidenceSummary(
@@ -711,6 +814,7 @@ func findEvidenceSummary(
 }
 
 var _ ports.Clock = fixedClock{}
+var _ ports.DOCXPicker = fakeDOCXPicker{}
 var _ ports.MarkdownPicker = fakeMarkdownPicker{}
 var _ ports.ProfileExtractor = (*sequencedProfileExtractor)(nil)
 var _ ports.ProfileRepository = failingSaveRepository{}

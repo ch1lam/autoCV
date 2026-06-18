@@ -732,7 +732,7 @@ func (service *MatchService) prepareInput(
 		return preparedMatchInput{}, emptyMatchReview(
 			"blocked",
 			jd,
-			"请先导入 Markdown 职业资料，生成可追溯 Evidence。",
+			"请先导入职业资料文档，生成可追溯 Evidence。",
 		).withScope(scopeSummary), nil
 	}
 	evidence := applyRunScope(selectUsableEvidence(storedEvidence), scope)

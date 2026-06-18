@@ -26,9 +26,11 @@ type ProfileService struct {
 	repository ports.ProfileRepository
 	search     ports.ProfileSearch
 	parser     ports.DocumentParser
+	docxParser ports.DocumentParser
 	extractor  ports.ProfileExtractor
 	files      ports.ManagedFileStore
 	picker     ports.MarkdownPicker
+	docxPicker ports.DOCXPicker
 	exporter   ports.ProfileExportPicker
 	clock      ports.Clock
 }
@@ -150,9 +152,11 @@ func NewProfileService(
 	repository ports.ProfileRepository,
 	search ports.ProfileSearch,
 	parser ports.DocumentParser,
+	docxParser ports.DocumentParser,
 	extractor ports.ProfileExtractor,
 	files ports.ManagedFileStore,
 	picker ports.MarkdownPicker,
+	docxPicker ports.DOCXPicker,
 	exporter ports.ProfileExportPicker,
 	clock ports.Clock,
 ) *ProfileService {
@@ -160,9 +164,11 @@ func NewProfileService(
 		repository: repository,
 		search:     search,
 		parser:     parser,
+		docxParser: docxParser,
 		extractor:  extractor,
 		files:      files,
 		picker:     picker,
+		docxPicker: docxPicker,
 		exporter:   exporter,
 		clock:      clock,
 	}
@@ -218,7 +224,38 @@ func (service *ProfileService) ImportMarkdown() (ImportMarkdownResult, error) {
 	if !accepted {
 		return ImportMarkdownResult{Cancelled: true}, nil
 	}
-	return service.importMarkdown(context.Background(), selected)
+	return service.importDocument(
+		context.Background(),
+		profileImportDocument{
+			kind:         "markdown",
+			label:        "Markdown",
+			originalName: selected.OriginalName,
+			contents:     selected.Contents,
+			parser:       service.parser,
+			save:         service.files.SaveMarkdown,
+		},
+	)
+}
+
+func (service *ProfileService) ImportDOCX() (ImportMarkdownResult, error) {
+	selected, accepted, err := service.docxPicker.PickDOCX()
+	if err != nil {
+		return ImportMarkdownResult{}, err
+	}
+	if !accepted {
+		return ImportMarkdownResult{Cancelled: true}, nil
+	}
+	return service.importDocument(
+		context.Background(),
+		profileImportDocument{
+			kind:         "docx",
+			label:        "DOCX",
+			originalName: selected.OriginalName,
+			contents:     selected.Contents,
+			parser:       service.docxParser,
+			save:         service.files.SaveDOCX,
+		},
+	)
 }
 
 func (service *ProfileService) ExportProfile() (ExportResult, error) {
@@ -525,15 +562,30 @@ func (service *ProfileService) selectProfile(
 	return service.getOverview(ctx)
 }
 
-func (service *ProfileService) importMarkdown(
+type profileImportDocument struct {
+	kind         string
+	label        string
+	originalName string
+	contents     []byte
+	parser       ports.DocumentParser
+	save         func(string, string, []byte) (string, error)
+}
+
+func (service *ProfileService) importDocument(
 	ctx context.Context,
-	selected ports.SelectedMarkdown,
+	selected profileImportDocument,
 ) (ImportMarkdownResult, error) {
-	if strings.TrimSpace(selected.OriginalName) == "" {
-		return ImportMarkdownResult{}, errors.New("Markdown file name is empty")
+	if strings.TrimSpace(selected.originalName) == "" {
+		return ImportMarkdownResult{}, fmt.Errorf("%s file name is empty", selected.label)
 	}
-	if len(selected.Contents) == 0 {
-		return ImportMarkdownResult{}, errors.New("Markdown file is empty")
+	if len(selected.contents) == 0 {
+		return ImportMarkdownResult{}, fmt.Errorf("%s file is empty", selected.label)
+	}
+	if selected.parser == nil {
+		return ImportMarkdownResult{}, fmt.Errorf("%s parser is not configured", selected.label)
+	}
+	if selected.save == nil {
+		return ImportMarkdownResult{}, fmt.Errorf("%s file store is not configured", selected.label)
 	}
 
 	profile, err := resolveActiveProfile(
@@ -545,7 +597,7 @@ func (service *ProfileService) importMarkdown(
 		return ImportMarkdownResult{}, err
 	}
 
-	contentHash := hashContents(selected.Contents)
+	contentHash := hashContents(selected.contents)
 	if existing, found, err := service.repository.FindDocumentByHash(
 		ctx,
 		profile.ID,
@@ -560,13 +612,14 @@ func (service *ProfileService) importMarkdown(
 		}, nil
 	}
 
-	parsed, err := service.parser.Parse(selected.Contents)
+	parsed, err := selected.parser.Parse(selected.contents)
 	if err != nil {
-		return ImportMarkdownResult{}, fmt.Errorf("parse Markdown: %w", err)
+		return ImportMarkdownResult{}, fmt.Errorf("parse %s: %w", selected.label, err)
 	}
 	if len(parsed.Chunks) == 0 {
-		return ImportMarkdownResult{}, errors.New(
-			"Markdown file has no importable content",
+		return ImportMarkdownResult{}, fmt.Errorf(
+			"%s file has no importable content",
+			selected.label,
 		)
 	}
 
@@ -598,10 +651,10 @@ func (service *ProfileService) importMarkdown(
 			sources,
 		)
 
-	managedPath, err := service.files.SaveMarkdown(
+	managedPath, err := selected.save(
 		profile.ID,
 		documentID,
-		selected.Contents,
+		selected.contents,
 	)
 	if err != nil {
 		return ImportMarkdownResult{}, err
@@ -610,8 +663,8 @@ func (service *ProfileService) importMarkdown(
 	document := domain.SourceDocument{
 		ID:           documentID,
 		ProfileID:    profile.ID,
-		Kind:         "markdown",
-		OriginalName: selected.OriginalName,
+		Kind:         selected.kind,
+		OriginalName: selected.originalName,
 		ManagedPath:  managedPath,
 		ContentHash:  contentHash,
 		ParseStatus:  "succeeded",
@@ -641,6 +694,7 @@ func (service *ProfileService) importMarkdown(
 		"profile.import.succeeded",
 		slog.String("profile_id", profile.ID),
 		slog.String("document_id", documentID),
+		slog.String("kind", selected.kind),
 		slog.String("content_hash", contentHash),
 		slog.Int("chunk_count", len(chunks)),
 		slog.Int("evidence_count", len(evidence)),

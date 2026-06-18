@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	docxparser "github.com/ch1lam/autocv/internal/adapters/docx"
 	"github.com/ch1lam/autocv/internal/adapters/fakeprovider"
 	"github.com/ch1lam/autocv/internal/adapters/filesystem"
 	markdownparser "github.com/ch1lam/autocv/internal/adapters/markdown"
@@ -747,6 +748,7 @@ func newMatchServiceFixtureFromFiles(
 		profileRepository,
 		sqliteadapter.NewProfileSearch(db),
 		markdownparser.New(),
+		docxparser.New(),
 		provider,
 		files,
 		fakeMarkdownPicker{
@@ -756,6 +758,7 @@ func newMatchServiceFixtureFromFiles(
 			},
 			accepted: true,
 		},
+		fakeDOCXPicker{},
 		fixedProfileExportPicker{},
 		fixedClock{now: profileTestTime},
 	)

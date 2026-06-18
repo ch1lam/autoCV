@@ -675,7 +675,7 @@ func (service *ResumeService) prepareInput(
 	if len(evidence) == 0 {
 		return preparedResumeInput{}, ResumeWorkspace{
 			Status:       "blocked",
-			Message:      "请先导入 Markdown 职业资料。",
+			Message:      "请先导入职业资料文档。",
 			ExportIssues: make([]string, 0),
 			Blocks:       make([]ResumeBlockSummary, 0),
 		}, nil
