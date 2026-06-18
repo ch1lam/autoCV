@@ -416,6 +416,7 @@ ReviewResume
 ### 10.2 DOCX
 
 - MVP 发布前实现。
+- 使用 Go 标准库 `archive/zip` 读取 OOXML 包，使用 `encoding/xml` 解析 `word/document.xml`；不在 MVP 引入第三方 DOCX 解析依赖。
 - 读取 OOXML 正文、标题、列表和表格中的文本。
 - 不要求还原原始视觉布局。
 - 图片、页眉页脚和复杂文本框可提示为未完整支持。
