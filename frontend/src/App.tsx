@@ -152,6 +152,13 @@ const workflowStatusLabels: Record<string, string> = {
   cancelled: "已取消",
 };
 
+const rerunnableWorkflowStages = new Set([
+  "matched",
+  "requires_user_input",
+  "drafted",
+  "rendered",
+]);
+
 function getWorkflowStageLabel(stage: string) {
   return workflowStageLabels[stage] ?? stage;
 }
@@ -162,13 +169,22 @@ function getWorkflowStatusLabel(status: string) {
 
 function WorkflowStatusCard({
   error,
+  isRerunning,
+  onRerunStage,
   status,
 }: {
   error: string;
+  isRerunning: boolean;
+  onRerunStage: (stage: string) => void;
   status: WorkflowStatus | null;
 }) {
   const current = status?.stages.find(
     (stage) => stage.stage === status.currentStage,
+  );
+  const retryableStage = status?.stages.find(
+    (stage) =>
+      (stage.status === "failed" || stage.status === "cancelled") &&
+      rerunnableWorkflowStages.has(stage.stage),
   );
   const hasFailedStage =
     status?.stages.some(
@@ -201,6 +217,22 @@ function WorkflowStatusCard({
       <span>WORKFLOW</span>
       <strong>{title}</strong>
       <small>{detail}</small>
+      {retryableStage ? (
+        <div className="workflow-card-actions">
+          <button
+            aria-label={`重试${getWorkflowStageLabel(retryableStage.stage)}阶段`}
+            className="button button--secondary workflow-rerun-button"
+            disabled={isRerunning}
+            onClick={() => onRerunStage(retryableStage.stage)}
+            type="button"
+          >
+            <IconRefresh aria-hidden="true" size={15} stroke={1.7} />
+            {isRerunning
+              ? "正在重试"
+              : `重试${getWorkflowStageLabel(retryableStage.stage)}阶段`}
+          </button>
+        </div>
+      ) : null}
       <ol className="workflow-stage-list">
         {(status?.stages ?? []).map((stage) => (
           <li
@@ -277,6 +309,8 @@ function App() {
   const [workflowSnapshot, setWorkflowSnapshot] =
     useState<WorkflowStatus | null>(null);
   const [workflowError, setWorkflowError] = useState("");
+  const [isRerunningWorkflowStage, setIsRerunningWorkflowStage] =
+    useState(false);
   const [isCancellingProvider, setIsCancellingProvider] = useState(false);
   const [providerRequestAction, setProviderRequestAction] =
     useState<ProviderRequestAction | null>(null);
@@ -497,6 +531,23 @@ function App() {
     setNotice(message);
     window.clearTimeout(noticeTimer.current);
     noticeTimer.current = window.setTimeout(() => setNotice(""), 2400);
+  };
+
+  const handleWorkflowRerun = async (stage: string) => {
+    setIsRerunningWorkflowStage(true);
+    setWorkflowError("");
+    try {
+      const status = await WorkflowService.RerunStage(stage);
+      setWorkflowSnapshot(status);
+      await Promise.all([refreshMatch(), refreshResume(), refreshPDF()]);
+      showNotice(`${getWorkflowStageLabel(stage)}阶段已重试`);
+    } catch (error) {
+      setWorkflowError(
+        error instanceof Error ? error.message : "阶段重试失败，请重试。",
+      );
+    } finally {
+      setIsRerunningWorkflowStage(false);
+    }
   };
 
   const handleNav = (label: string) => {
@@ -1311,6 +1362,8 @@ function App() {
         </nav>
         <WorkflowStatusCard
           error={workflowError}
+          isRerunning={isRerunningWorkflowStage}
+          onRerunStage={handleWorkflowRerun}
           status={workflowSnapshot}
         />
         <button

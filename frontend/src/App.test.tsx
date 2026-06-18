@@ -24,6 +24,7 @@ const {
   getResumeWorkspaceMock,
   getSettingsMock,
   getWorkflowStatusMock,
+  rerunWorkflowStageMock,
   saveJDDraftMock,
   saveEvidenceMock,
   saveProviderMock,
@@ -52,6 +53,7 @@ const {
   getWorkflowStatusMock: vi.fn(),
   importMarkdownMock: vi.fn(),
   renderPDFMock: vi.fn(),
+  rerunWorkflowStageMock: vi.fn(),
   resolveEvidenceConflictMock: vi.fn(),
   saveJDDraftMock: vi.fn(),
   saveEvidenceMock: vi.fn(),
@@ -111,6 +113,7 @@ vi.mock("../bindings/github.com/ch1lam/autocv/internal/app", () => ({
   },
   WorkflowService: {
     GetStatus: getWorkflowStatusMock,
+    RerunStage: rerunWorkflowStageMock,
   },
 }));
 
@@ -646,6 +649,21 @@ describe("Paper Trail match review", () => {
     getResumeWorkspaceMock.mockReset().mockResolvedValue(resumeWorkspace);
     getSettingsMock.mockReset().mockResolvedValue(providerSettings);
     getWorkflowStatusMock.mockReset().mockResolvedValue(workflowStatus);
+    rerunWorkflowStageMock.mockReset().mockResolvedValue({
+      ...workflowStatus,
+      currentStage: "drafted",
+      stages: workflowStatus.stages.map((stage) =>
+        stage.stage === "drafted"
+          ? {
+              ...stage,
+              status: "succeeded",
+              hasResult: true,
+              hasError: false,
+              errorMessage: "",
+            }
+          : stage,
+      ),
+    });
     generateResumeMock.mockReset().mockResolvedValue(resumeWorkspace);
     updateResumeMarkdownMock.mockReset().mockImplementation((markdown) =>
       Promise.resolve({
@@ -782,6 +800,26 @@ describe("Paper Trail match review", () => {
     expect(within(workflowCard).getByText(/Run run-1234/)).toBeInTheDocument();
     expect(within(workflowCard).getByText("匹配")).toBeInTheDocument();
     expect(within(workflowCard).getByText("生成")).toBeInTheDocument();
+  });
+
+  it("retries a failed workflow stage from the recovery card", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const workflowCard = await screen.findByRole("region", {
+      name: "工作流恢复状态",
+    });
+    await user.click(
+      within(workflowCard).getByRole("button", {
+        name: "重试生成阶段",
+      }),
+    );
+
+    expect(rerunWorkflowStageMock).toHaveBeenCalledWith("drafted");
+    expect(await screen.findByText("生成阶段已重试")).toBeInTheDocument();
+    expect(getMatchReviewMock).toHaveBeenCalledTimes(2);
+    expect(getResumeWorkspaceMock).toHaveBeenCalledTimes(2);
+    expect(getPDFWorkspaceMock).toHaveBeenCalledTimes(2);
   });
 
   it("rebuilds stale match results through the Go service", async () => {
