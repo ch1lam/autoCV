@@ -6,6 +6,7 @@ type DocumentMetadata struct {
 
 type SourceLocator struct {
 	HeadingPath []string `json:"heading_path"`
+	Page        int      `json:"page,omitempty"`
 	Start       int      `json:"start"`
 	End         int      `json:"end"`
 }

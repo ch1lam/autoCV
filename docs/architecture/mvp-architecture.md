@@ -424,6 +424,7 @@ ReviewResume
 ### 10.3 PDF
 
 - MVP 只支持含文本层的 PDF。
+- 使用 `github.com/ledongthuc/pdf` 从内存 reader 读取文本层，并按页生成 Source Chunk。
 - 提取后执行可读性检查；文本过少时判定为可能扫描件。
 - 不做 OCR。
 - 页码和文本范围进入 `locator_json`，用于来源跳转。
