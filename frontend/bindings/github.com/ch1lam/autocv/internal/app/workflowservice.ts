@@ -15,5 +15,11 @@ export function GetStatus(): $CancellablePromise<$models.WorkflowStatus> {
     });
 }
 
+export function RerunStage(stage: string): $CancellablePromise<$models.WorkflowStatus> {
+    return $Call.ByID(2374860165, stage).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
 // Private type creation functions
 const $$createType0 = $models.WorkflowStatus.createFrom;

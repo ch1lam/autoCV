@@ -150,7 +150,7 @@ func run() error {
 	}
 	clarificationRepository := sqlite.NewClarificationRepository(db)
 	confirmationRepository := sqlite.NewRunConfirmationRepository(db)
-	app.RegisterService(application.NewService(appservice.NewMatchService(
+	matchService := appservice.NewMatchService(
 		matchRepository,
 		resumeRepository,
 		resumeRepository,
@@ -161,11 +161,7 @@ func run() error {
 		jdRepository,
 		provider,
 		systemclock.Clock{},
-	)))
-	app.RegisterService(application.NewService(appservice.NewWorkflowService(
-		resumeRepository,
-		stageResultRepository,
-	)))
+	)
 	resumeService := appservice.NewResumeService(
 		resumeRepository,
 		stageResultRepository,
@@ -176,8 +172,7 @@ func run() error {
 		provider,
 		systemclock.Clock{},
 	)
-	app.RegisterService(application.NewService(resumeService))
-	app.RegisterService(application.NewService(appservice.NewPDFService(
+	pdfService := appservice.NewPDFService(
 		resumeService,
 		sqlite.NewArtifactRepository(db),
 		managedFiles,
@@ -187,7 +182,19 @@ func run() error {
 		),
 		exportPicker,
 		systemclock.Clock{},
+	)
+	app.RegisterService(application.NewService(matchService))
+	app.RegisterService(application.NewService(appservice.NewWorkflowService(
+		resumeRepository,
+		stageResultRepository,
+		appservice.WorkflowStageRunners{
+			Match:  matchService,
+			Resume: resumeService,
+			PDF:    pdfService,
+		},
 	)))
+	app.RegisterService(application.NewService(resumeService))
+	app.RegisterService(application.NewService(pdfService))
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:     "AutoCV",

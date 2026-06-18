@@ -158,21 +158,31 @@ func (service *PDFService) GetWorkspace() (PDFWorkspace, error) {
 }
 
 func (service *PDFService) Render() (PDFWorkspace, error) {
+	return service.render(false)
+}
+
+func (service *PDFService) rerun() (PDFWorkspace, error) {
+	return service.render(true)
+}
+
+func (service *PDFService) render(force bool) (PDFWorkspace, error) {
 	ctx := context.Background()
 	run, resume, err := service.resumes.currentReadyResume(ctx)
 	if err != nil {
 		return PDFWorkspace{}, err
 	}
 	inputHash := hashPDFRenderInput(resume)
-	if workspace, reused, err := service.reuseSuccessfulPDFRenderStage(
-		ctx,
-		run.ID,
-		resume,
-		inputHash,
-	); err != nil {
-		return PDFWorkspace{}, err
-	} else if reused {
-		return workspace, nil
+	if !force {
+		if workspace, reused, err := service.reuseSuccessfulPDFRenderStage(
+			ctx,
+			run.ID,
+			resume,
+			inputHash,
+		); err != nil {
+			return PDFWorkspace{}, err
+		} else if reused {
+			return workspace, nil
+		}
 	}
 	now := service.clock.Now().UTC()
 	service.savePDFRenderStageResult(

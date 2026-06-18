@@ -112,6 +112,80 @@ func TestWorkflowServiceReportsEmptyStatus(t *testing.T) {
 	}
 }
 
+func TestWorkflowServiceRerunsDraftStage(t *testing.T) {
+	fixture := newMatchServiceFixture(t, fakeprovider.New())
+	fixture.importProfile(t)
+	fixture.analyzeJD(t, fixture.jdText)
+	if _, err := fixture.service.Analyze(); err != nil {
+		t.Fatalf("analyze match: %v", err)
+	}
+
+	resumeService := NewResumeService(
+		fixture.scopeRepository,
+		fixture.stageRepository,
+		fixture.confirmationRepository,
+		fixture.matchRepository,
+		fixture.profileRepository,
+		fixture.jdRepository,
+		fakeprovider.New(),
+		fixedClock{now: profileTestTime.Add(2 * time.Hour)},
+	)
+	generated, err := resumeService.Generate("zh", 0.5)
+	if err != nil {
+		t.Fatalf("generate resume: %v", err)
+	}
+	if generated.Version != 1 {
+		t.Fatalf("expected first resume version, got %#v", generated)
+	}
+
+	rerunService := NewResumeService(
+		fixture.scopeRepository,
+		fixture.stageRepository,
+		fixture.confirmationRepository,
+		fixture.matchRepository,
+		fixture.profileRepository,
+		fixture.jdRepository,
+		fakeprovider.New(),
+		fixedClock{now: profileTestTime.Add(3 * time.Hour)},
+	)
+	workflowService := NewWorkflowService(
+		fixture.scopeRepository,
+		fixture.stageRepository,
+		WorkflowStageRunners{Resume: rerunService},
+	)
+	status, err := workflowService.RerunStage(string(workflow.StageDrafted))
+	if err != nil {
+		t.Fatalf("rerun drafted stage: %v", err)
+	}
+	if status.CurrentStage != string(workflow.StageDrafted) {
+		t.Fatalf("expected drafted current stage, got %#v", status)
+	}
+	drafted := findWorkflowStage(t, status, workflow.StageDrafted)
+	if drafted.Status != string(workflow.StageStatusSucceeded) ||
+		!drafted.HasResult {
+		t.Fatalf("unexpected drafted stage after rerun %#v", drafted)
+	}
+
+	run, found, err := fixture.scopeRepository.LatestRun(context.Background())
+	if err != nil {
+		t.Fatalf("read latest run: %v", err)
+	}
+	if !found {
+		t.Fatal("expected latest run after rerun")
+	}
+	_, resume, found, err := fixture.scopeRepository.GetLatest(
+		context.Background(),
+		run.ProfileID,
+		run.JDID,
+	)
+	if err != nil {
+		t.Fatalf("read latest resume: %v", err)
+	}
+	if !found || resume.Version != 2 {
+		t.Fatalf("expected forced rerun to create version 2, found=%v %#v", found, resume)
+	}
+}
+
 func findWorkflowStage(
 	t *testing.T,
 	status WorkflowStatus,

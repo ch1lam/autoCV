@@ -204,6 +204,14 @@ func (service *MatchService) SaveScope(
 }
 
 func (service *MatchService) Analyze() (MatchReview, error) {
+	return service.analyze(false)
+}
+
+func (service *MatchService) rerun() (MatchReview, error) {
+	return service.analyze(true)
+}
+
+func (service *MatchService) analyze(force bool) (MatchReview, error) {
 	ctx := context.Background()
 	input, blocked, err := service.prepareInput(ctx)
 	if err != nil {
@@ -212,10 +220,12 @@ func (service *MatchService) Analyze() (MatchReview, error) {
 	if blocked.Status != "" {
 		return blocked, nil
 	}
-	if review, reused, err := service.reuseSuccessfulMatchStage(ctx, input); err != nil {
-		return MatchReview{}, err
-	} else if reused {
-		return review, nil
+	if !force {
+		if review, reused, err := service.reuseSuccessfulMatchStage(ctx, input); err != nil {
+			return MatchReview{}, err
+		} else if reused {
+			return review, nil
+		}
 	}
 
 	now := service.clock.Now().UTC()

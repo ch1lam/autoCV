@@ -224,6 +224,21 @@ func (service *ResumeService) Generate(
 	language string,
 	packagingLevel float64,
 ) (ResumeWorkspace, error) {
+	return service.generate(language, packagingLevel, false)
+}
+
+func (service *ResumeService) rerun(
+	language string,
+	packagingLevel float64,
+) (ResumeWorkspace, error) {
+	return service.generate(language, packagingLevel, true)
+}
+
+func (service *ResumeService) generate(
+	language string,
+	packagingLevel float64,
+	force bool,
+) (ResumeWorkspace, error) {
 	resumeLanguage := domain.ResumeLanguage(language)
 	if resumeLanguage != domain.ResumeLanguageChinese &&
 		resumeLanguage != domain.ResumeLanguageEnglish {
@@ -272,17 +287,19 @@ func (service *ResumeService) Generate(
 	if err != nil {
 		return ResumeWorkspace{}, err
 	}
-	if workspace, reused, err := service.reuseSuccessfulResumeDraftStage(
-		ctx,
-		run,
-		inputHash,
-		previous,
-		found,
-		input.evidence,
-	); err != nil {
-		return ResumeWorkspace{}, err
-	} else if reused {
-		return workspace, nil
+	if !force {
+		if workspace, reused, err := service.reuseSuccessfulResumeDraftStage(
+			ctx,
+			run,
+			inputHash,
+			previous,
+			found,
+			input.evidence,
+		); err != nil {
+			return ResumeWorkspace{}, err
+		} else if reused {
+			return workspace, nil
+		}
 	}
 	if !found {
 		run = domain.ResumeRun{

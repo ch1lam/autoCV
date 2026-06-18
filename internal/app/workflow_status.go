@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/ch1lam/autocv/internal/domain"
@@ -13,6 +14,13 @@ import (
 type WorkflowService struct {
 	runRepository   ports.ResumeRunRepository
 	stageRepository ports.StageResultRepository
+	runners         WorkflowStageRunners
+}
+
+type WorkflowStageRunners struct {
+	Match  *MatchService
+	Resume *ResumeService
+	PDF    *PDFService
 }
 
 type WorkflowStatus struct {
@@ -38,10 +46,16 @@ type WorkflowStageSummary struct {
 func NewWorkflowService(
 	runRepository ports.ResumeRunRepository,
 	stageRepository ports.StageResultRepository,
+	runners ...WorkflowStageRunners,
 ) *WorkflowService {
+	var configured WorkflowStageRunners
+	if len(runners) > 0 {
+		configured = runners[0]
+	}
 	return &WorkflowService{
 		runRepository:   runRepository,
 		stageRepository: stageRepository,
+		runners:         configured,
 	}
 }
 
@@ -80,6 +94,74 @@ func (service *WorkflowService) GetStatus() (WorkflowStatus, error) {
 		return WorkflowStatus{}, err
 	}
 	return workflowStatusFrom(run, results), nil
+}
+
+func (service *WorkflowService) RerunStage(stage string) (WorkflowStatus, error) {
+	normalizedStage := workflow.Stage(strings.TrimSpace(stage))
+	if normalizedStage == workflow.StageRequiresUserInput {
+		normalizedStage = workflow.StageMatched
+	}
+	if !normalizedStage.Valid() {
+		return WorkflowStatus{}, fmt.Errorf(
+			"invalid workflow stage %q",
+			stage,
+		)
+	}
+
+	ctx := context.Background()
+	run, found, err := service.runRepository.LatestRun(ctx)
+	if err != nil {
+		return WorkflowStatus{}, err
+	}
+	if !found {
+		return WorkflowStatus{}, fmt.Errorf(
+			"cannot rerun %s before creating a Resume Run",
+			normalizedStage,
+		)
+	}
+
+	switch normalizedStage {
+	case workflow.StageMatched:
+		if service.runners.Match == nil {
+			return WorkflowStatus{}, fmt.Errorf(
+				"workflow stage %s has no rerun handler",
+				normalizedStage,
+			)
+		}
+		if _, err := service.runners.Match.rerun(); err != nil {
+			return WorkflowStatus{}, err
+		}
+	case workflow.StageDrafted:
+		if service.runners.Resume == nil {
+			return WorkflowStatus{}, fmt.Errorf(
+				"workflow stage %s has no rerun handler",
+				normalizedStage,
+			)
+		}
+		if _, err := service.runners.Resume.rerun(
+			string(run.Language),
+			run.PackagingLevel,
+		); err != nil {
+			return WorkflowStatus{}, err
+		}
+	case workflow.StageRendered:
+		if service.runners.PDF == nil {
+			return WorkflowStatus{}, fmt.Errorf(
+				"workflow stage %s has no rerun handler",
+				normalizedStage,
+			)
+		}
+		if _, err := service.runners.PDF.rerun(); err != nil {
+			return WorkflowStatus{}, err
+		}
+	default:
+		return WorkflowStatus{}, fmt.Errorf(
+			"workflow stage %s cannot be rerun directly",
+			normalizedStage,
+		)
+	}
+
+	return service.GetStatus()
 }
 
 func workflowStatusFrom(
