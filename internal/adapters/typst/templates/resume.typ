@@ -50,11 +50,15 @@
   }
 }
 
-#let render-item(item) = if item.kind == "bullet" {
+#let item-body(item) = if item.kind == "bullet" {
   list.item(item-content(item))
 } else {
   par(item-content(item))
 }
+
+#let render-item(item) = block(breakable: false)[
+  #item-body(item)
+]
 
 #align(left)[
   #text(
