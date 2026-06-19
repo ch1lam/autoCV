@@ -610,6 +610,7 @@ const resumeWorkspace = {
 const pdfWorkspace = {
   status: "ready",
   message: "PDF 已从当前 Resume 版本渲染并保存到本地。",
+  warnings: [],
   exportIssues: [],
   artifactId: "artifact-1234567890",
   resumeId: "resume-1",
@@ -1150,6 +1151,33 @@ describe("Paper Trail match review", () => {
     expect(
       await screen.findByText("PDF 已导出到 /tmp/AutoCV-resume.pdf"),
     ).toBeInTheDocument();
+  });
+
+  it("shows a non-blocking page-count warning for long PDFs", async () => {
+    const user = userEvent.setup();
+    getPDFWorkspaceMock.mockResolvedValue({
+      ...pdfWorkspace,
+      warnings: [
+        "PDF 当前为 3 页，默认目标是两页以内；建议压缩内容或调整取舍，必要时仍可导出。",
+      ],
+      previewPagesBase64: [
+        pdfWorkspace.previewPagesBase64[0],
+        pdfWorkspace.previewPagesBase64[0],
+        pdfWorkspace.previewPagesBase64[0],
+      ],
+    });
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "PDF 预览" }));
+    expect(await screen.findByText("PDF 篇幅提醒")).toBeInTheDocument();
+    expect(screen.getByText(/PDF 当前为 3 页/)).toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("complementary", {
+          name: "PDF Artifact 检查器",
+        }),
+      ).getByRole("button", { name: "导出 PDF" }),
+    ).toBeEnabled();
   });
 
   it("shows unconfirmed content and disables final exports", async () => {

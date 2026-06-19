@@ -698,6 +698,7 @@ export class MatchReview {
 export class PDFWorkspace {
     "status": string;
     "message": string;
+    "warnings": string[];
     "exportIssues": string[];
     "artifactId": string;
     "resumeId": string;
@@ -717,6 +718,9 @@ export class PDFWorkspace {
         }
         if (!("message" in $$source)) {
             this["message"] = "";
+        }
+        if (!("warnings" in $$source)) {
+            this["warnings"] = [];
         }
         if (!("exportIssues" in $$source)) {
             this["exportIssues"] = [];
@@ -760,13 +764,17 @@ export class PDFWorkspace {
      */
     static createFrom($$source: any = {}): PDFWorkspace {
         const $$createField2_0 = $$createType0;
-        const $$createField11_0 = $$createType0;
+        const $$createField3_0 = $$createType0;
+        const $$createField12_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("warnings" in $$parsedSource) {
+            $$parsedSource["warnings"] = $$createField2_0($$parsedSource["warnings"]);
+        }
         if ("exportIssues" in $$parsedSource) {
-            $$parsedSource["exportIssues"] = $$createField2_0($$parsedSource["exportIssues"]);
+            $$parsedSource["exportIssues"] = $$createField3_0($$parsedSource["exportIssues"]);
         }
         if ("previewPagesBase64" in $$parsedSource) {
-            $$parsedSource["previewPagesBase64"] = $$createField11_0($$parsedSource["previewPagesBase64"]);
+            $$parsedSource["previewPagesBase64"] = $$createField12_0($$parsedSource["previewPagesBase64"]);
         }
         return new PDFWorkspace($$parsedSource as Partial<PDFWorkspace>);
     }

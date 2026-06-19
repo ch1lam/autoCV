@@ -185,6 +185,16 @@ function PDFPreview({
           </div>
         )}
 
+        {!stale && workspace.warnings.length > 0 && (
+          <div className="pdf-export-warning" role="status">
+            <IconAlertTriangle aria-hidden="true" size={18} stroke={1.7} />
+            <div>
+              <strong>PDF 篇幅提醒</strong>
+              <p>{workspace.warnings.join("；")}</p>
+            </div>
+          </div>
+        )}
+
         <section className="pdf-canvas" aria-label="PDF 简历预览">
           {workspace.previewPagesBase64.map((page, index) => (
             <figure key={`${workspace.artifactId}-page-${index + 1}`}>

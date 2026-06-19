@@ -33,6 +33,7 @@ type PDFService struct {
 type PDFWorkspace struct {
 	Status             string   `json:"status"`
 	Message            string   `json:"message"`
+	Warnings           []string `json:"warnings"`
 	ExportIssues       []string `json:"exportIssues"`
 	ArtifactID         string   `json:"artifactId"`
 	ResumeID           string   `json:"resumeId"`
@@ -82,6 +83,7 @@ func (service *PDFService) GetWorkspace() (PDFWorkspace, error) {
 		return PDFWorkspace{
 			Status:       "blocked",
 			Message:      resumeWorkspace.Message,
+			Warnings:     pdfWorkspaceWarnings(0),
 			ExportIssues: resumeWorkspace.ExportIssues,
 			Version:      resumeWorkspace.Version,
 			Language:     resumeWorkspace.Language,
@@ -107,6 +109,7 @@ func (service *PDFService) GetWorkspace() (PDFWorkspace, error) {
 		return PDFWorkspace{
 			Status:       status,
 			Message:      message,
+			Warnings:     pdfWorkspaceWarnings(0),
 			ExportIssues: resumeWorkspace.ExportIssues,
 			ResumeID:     resumeWorkspace.ResumeID,
 			Version:      resumeWorkspace.Version,
@@ -146,6 +149,7 @@ func (service *PDFService) GetWorkspace() (PDFWorkspace, error) {
 	return PDFWorkspace{
 		Status:             status,
 		Message:            message,
+		Warnings:           pdfWorkspaceWarnings(len(previewPages)),
 		ExportIssues:       resumeWorkspace.ExportIssues,
 		ArtifactID:         artifact.ID,
 		ResumeID:           artifact.ResumeID,
@@ -158,6 +162,18 @@ func (service *PDFService) GetWorkspace() (PDFWorkspace, error) {
 		PreviewPagesBase64: previewPages,
 		CanExport:          current && resumeWorkspace.CanExport,
 	}, nil
+}
+
+func pdfWorkspaceWarnings(pageCount int) []string {
+	if pageCount <= 2 {
+		return make([]string, 0)
+	}
+	return []string{
+		fmt.Sprintf(
+			"PDF 当前为 %d 页，默认目标是两页以内；建议压缩内容或调整取舍，必要时仍可导出。",
+			pageCount,
+		),
+	}
 }
 
 func (service *PDFService) Render() (PDFWorkspace, error) {

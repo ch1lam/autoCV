@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -44,7 +45,8 @@ func (repository *memoryArtifactRepository) Save(
 }
 
 type sequentialRenderer struct {
-	calls int
+	calls            int
+	previewPageCount int
 }
 
 func (renderer *sequentialRenderer) Render(
@@ -55,9 +57,20 @@ func (renderer *sequentialRenderer) Render(
 	if renderer.calls > 1 {
 		return ports.RenderedResume{}, errors.New("synthetic Typst failure")
 	}
+	pageCount := renderer.previewPageCount
+	if pageCount == 0 {
+		pageCount = 1
+	}
+	previews := make([][]byte, 0, pageCount)
+	for page := 1; page <= pageCount; page++ {
+		previews = append(
+			previews,
+			[]byte(fmt.Sprintf("\x89PNG\r\nsynthetic-page-%d", page)),
+		)
+	}
 	return ports.RenderedResume{
 		PDF:          []byte("%PDF-1.7\nsynthetic"),
-		PreviewPages: [][]byte{[]byte("\x89PNG\r\nsynthetic")},
+		PreviewPages: previews,
 	}, nil
 }
 
@@ -225,6 +238,49 @@ func TestPDFServiceExportsCurrentArtifactAndMarkdown(t *testing.T) {
 	}
 	if markdownResult.Path != markdownPath+".md" {
 		t.Fatalf("unexpected Markdown export path %q", markdownResult.Path)
+	}
+}
+
+func TestPDFServiceWarnsWhenRenderedPDFExceedsTwoPages(t *testing.T) {
+	resumes := newResumeServiceFixture(t)
+	if _, err := resumes.Generate("zh", 0.5); err != nil {
+		t.Fatalf("generate resume: %v", err)
+	}
+	store, err := filesystem.NewManagedFiles(t.TempDir())
+	if err != nil {
+		t.Fatalf("create artifact store: %v", err)
+	}
+	service := NewPDFService(
+		resumes,
+		&memoryArtifactRepository{},
+		store,
+		&sequentialRenderer{previewPageCount: 3},
+		fixedExportPicker{},
+		fixedClock{now: time.Date(2026, 6, 12, 9, 0, 0, 0, time.UTC)},
+	)
+
+	workspace, err := service.Render()
+	if err != nil {
+		t.Fatalf("render PDF: %v", err)
+	}
+	if !workspace.CanExport {
+		t.Fatalf("page-count warning should not block export, got %#v", workspace)
+	}
+	if len(workspace.PreviewPagesBase64) != 3 {
+		t.Fatalf("expected three preview pages, got %#v", workspace)
+	}
+	if len(workspace.Warnings) != 1 ||
+		!strings.Contains(workspace.Warnings[0], "PDF 当前为 3 页") {
+		t.Fatalf("expected two-page warning, got %#v", workspace.Warnings)
+	}
+
+	restored, err := service.GetWorkspace()
+	if err != nil {
+		t.Fatalf("restore PDF workspace: %v", err)
+	}
+	if len(restored.Warnings) != 1 ||
+		restored.Warnings[0] != workspace.Warnings[0] {
+		t.Fatalf("expected restored warning, got %#v", restored.Warnings)
 	}
 }
 
