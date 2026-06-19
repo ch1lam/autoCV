@@ -38,6 +38,24 @@
   #line(length: 100%, stroke: 0.65pt + rgb("#8fa0ad"))
 ]
 
+#let item-content(item) = {
+  for run in item.runs {
+    if run.kind == "link" {
+      link(run.url)[
+        #text(fill: rgb("#1f5f8b"))[#run.text]
+      ]
+    } else {
+      text(run.text)
+    }
+  }
+}
+
+#let render-item(item) = if item.kind == "bullet" {
+  list.item(item-content(item))
+} else {
+  par(item-content(item))
+}
+
 #align(left)[
   #text(
     font: data.heading_fonts,
@@ -50,12 +68,14 @@
 #line(length: 100%, stroke: 1.1pt + rgb("#c36b3c"))
 
 #for section in data.sections {
-  section-heading(section.heading)
-  for item in section.items {
-    if item.kind == "bullet" {
-      list.item(text(item.text))
+  for (index, item) in section.items.enumerate() {
+    if index == 0 {
+      block(breakable: false)[
+        #section-heading(section.heading)
+        #render-item(item)
+      ]
     } else {
-      par(text(item.text))
+      render-item(item)
     }
   }
 }

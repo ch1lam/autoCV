@@ -478,6 +478,8 @@ Resume JSON
 - 字体和字号可按语言切换；模板区分正文与标题字体栈。
 - 中文正文优先使用 `Charter` + `Songti SC`，标题优先使用 `PingFang SC`。
 - 英文正文优先使用 `Charter`，标题优先使用 `Avenir Next`。
+- Markdown 链接和裸 URL 在 PDF 中渲染为 Typst `link`。
+- Section 标题和首条内容使用不可拆分块，避免标题单独落在页尾。
 - 默认两页目标，不通过缩小到不可读字号强行压页。
 
 `kami` 用于比较视觉质量，不作为 AutoCV 运行时组件。

@@ -62,6 +62,33 @@ func TestNewViewModelUsesCalibratedEnglishFontStacks(t *testing.T) {
 	}
 }
 
+func TestNewViewModelCreatesLinkRuns(t *testing.T) {
+	resume := renderFixture(domain.ResumeLanguageEnglish)
+	resume.Blocks[0].Content = "Portfolio: [GitHub](https://github.com/ch1lam). Profile https://example.com/profile."
+
+	view := NewViewModel(resume)
+	runs := view.Sections[0].Items[0].Runs
+	expected := []TextRun{
+		{Kind: "text", Text: "Portfolio: "},
+		{Kind: "link", Text: "GitHub", URL: "https://github.com/ch1lam"},
+		{Kind: "text", Text: ". Profile "},
+		{
+			Kind: "link",
+			Text: "https://example.com/profile",
+			URL:  "https://example.com/profile",
+		},
+		{Kind: "text", Text: "."},
+	}
+	if len(runs) != len(expected) {
+		t.Fatalf("expected runs %#v, got %#v", expected, runs)
+	}
+	for index := range expected {
+		if runs[index] != expected[index] {
+			t.Fatalf("expected run %d %#v, got %#v", index, expected[index], runs[index])
+		}
+	}
+}
+
 func TestRendererCompilesChineseAndEnglishTextPDFs(t *testing.T) {
 	if _, err := exec.LookPath("typst"); err != nil {
 		t.Skip("typst CLI is not installed")
@@ -96,6 +123,10 @@ func TestRendererCompilesChineseAndEnglishTextPDFs(t *testing.T) {
 				rendered.Metadata.TemplateVersion != TemplateVersion {
 				t.Fatalf("unexpected render metadata %#v", rendered.Metadata)
 			}
+			if language == domain.ResumeLanguageEnglish &&
+				!bytes.Contains(rendered.PDF, []byte("https://example.com/autocv")) {
+				t.Fatal("expected rendered PDF to include URL link target")
+			}
 		})
 	}
 }
@@ -118,7 +149,7 @@ func renderFixture(language domain.ResumeLanguage) domain.Resume {
 	if language == domain.ResumeLanguageEnglish {
 		role = "Backend Engineer"
 		summary = "Backend engineer focused on reliable Go services."
-		experience = "Built payment services and reduced API latency by 35%."
+		experience = "Built payment services and reduced API latency by 35%. Portfolio https://example.com/autocv"
 	}
 	return domain.Resume{
 		ID:         "resume-1",

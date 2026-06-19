@@ -6,12 +6,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/ch1lam/autocv/internal/domain"
 	"github.com/ch1lam/autocv/internal/ports"
@@ -48,9 +51,21 @@ type ViewSection struct {
 }
 
 type ViewItem struct {
+	Kind string    `json:"kind"`
+	Text string    `json:"text"`
+	Runs []TextRun `json:"runs"`
+}
+
+type TextRun struct {
 	Kind string `json:"kind"`
 	Text string `json:"text"`
+	URL  string `json:"url,omitempty"`
 }
+
+var (
+	markdownLinkPattern = regexp.MustCompile(`\[([^\[\]\n]+)\]\((https?://[^\s)]+)\)`)
+	rawURLPattern       = regexp.MustCompile(`https?://[^\s<>()\[\]]+`)
+)
 
 func NewRenderer(binary string, timeout time.Duration) *Renderer {
 	if strings.TrimSpace(binary) == "" {
@@ -281,10 +296,102 @@ func viewItems(contents string) []ViewItem {
 			}
 		}
 		if line != "" {
-			items = append(items, ViewItem{Kind: kind, Text: line})
+			items = append(items, ViewItem{
+				Kind: kind,
+				Text: line,
+				Runs: textRuns(line),
+			})
 		}
 	}
 	return items
+}
+
+func textRuns(value string) []TextRun {
+	runs := make([]TextRun, 0, 1)
+	cursor := 0
+	for _, match := range markdownLinkPattern.FindAllStringSubmatchIndex(value, -1) {
+		if match[0] > cursor {
+			runs = appendRawURLRuns(runs, value[cursor:match[0]])
+		}
+		label := value[match[2]:match[3]]
+		destination := value[match[4]:match[5]]
+		if isHTTPURL(destination) {
+			runs = append(runs, TextRun{
+				Kind: "link",
+				Text: label,
+				URL:  destination,
+			})
+		} else {
+			runs = appendRawURLRuns(runs, value[match[0]:match[1]])
+		}
+		cursor = match[1]
+	}
+	if cursor < len(value) {
+		runs = appendRawURLRuns(runs, value[cursor:])
+	}
+	if len(runs) == 0 {
+		return []TextRun{{Kind: "text", Text: value}}
+	}
+	return runs
+}
+
+func appendRawURLRuns(runs []TextRun, value string) []TextRun {
+	cursor := 0
+	for _, match := range rawURLPattern.FindAllStringIndex(value, -1) {
+		if match[0] > cursor {
+			runs = appendTextRun(runs, value[cursor:match[0]])
+		}
+		destination, suffix := splitURLTrailingPunctuation(
+			value[match[0]:match[1]],
+		)
+		if isHTTPURL(destination) {
+			runs = append(runs, TextRun{
+				Kind: "link",
+				Text: destination,
+				URL:  destination,
+			})
+			runs = appendTextRun(runs, suffix)
+		} else {
+			runs = appendTextRun(runs, value[match[0]:match[1]])
+		}
+		cursor = match[1]
+	}
+	if cursor < len(value) {
+		runs = appendTextRun(runs, value[cursor:])
+	}
+	return runs
+}
+
+func appendTextRun(runs []TextRun, value string) []TextRun {
+	if value == "" {
+		return runs
+	}
+	if len(runs) > 0 && runs[len(runs)-1].Kind == "text" {
+		runs[len(runs)-1].Text += value
+		return runs
+	}
+	return append(runs, TextRun{Kind: "text", Text: value})
+}
+
+func splitURLTrailingPunctuation(value string) (string, string) {
+	end := len(value)
+	for end > 0 {
+		character, size := utf8.DecodeLastRuneInString(value[:end])
+		if !strings.ContainsRune(".,;:!?", character) {
+			break
+		}
+		end -= size
+	}
+	return value[:end], value[end:]
+}
+
+func isHTTPURL(value string) bool {
+	parsed, err := neturl.ParseRequestURI(value)
+	if err != nil {
+		return false
+	}
+	return (parsed.Scheme == "http" || parsed.Scheme == "https") &&
+		parsed.Host != ""
 }
 
 func sectionHeading(
