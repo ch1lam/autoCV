@@ -9,6 +9,14 @@ import (
 type RenderedResume struct {
 	PDF          []byte
 	PreviewPages [][]byte
+	Metadata     RenderMetadata
+}
+
+type RenderMetadata struct {
+	Renderer                string
+	RendererVersion         string
+	ExpectedRendererVersion string
+	TemplateVersion         string
 }
 
 type ResumeRenderer interface {

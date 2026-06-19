@@ -18,10 +18,12 @@ import (
 )
 
 const (
-	dataFilename     = "resume.json"
-	templateFilename = "resume.typ"
-	outputFilename   = "resume.pdf"
-	previewPattern   = "preview-{p}.png"
+	ExpectedTypstVersion = "typst 0.14.2"
+	TemplateVersion      = "resume.typ/v1"
+	dataFilename         = "resume.json"
+	templateFilename     = "resume.typ"
+	outputFilename       = "resume.pdf"
+	previewPattern       = "preview-{p}.png"
 )
 
 //go:embed templates/resume.typ
@@ -129,6 +131,10 @@ func (renderer *Renderer) Render(
 			renderer.timeout,
 		)
 	}
+	rendererVersion, err := renderer.version(renderContext)
+	if err != nil {
+		return ports.RenderedResume{}, err
+	}
 
 	pdf, err := os.ReadFile(filepath.Join(directory, outputFilename))
 	if err != nil {
@@ -161,7 +167,38 @@ func (renderer *Renderer) Render(
 		}
 		previews = append(previews, page)
 	}
-	return ports.RenderedResume{PDF: pdf, PreviewPages: previews}, nil
+	return ports.RenderedResume{
+		PDF:          pdf,
+		PreviewPages: previews,
+		Metadata: ports.RenderMetadata{
+			Renderer:                "typst",
+			RendererVersion:         rendererVersion,
+			ExpectedRendererVersion: ExpectedTypstVersion,
+			TemplateVersion:         TemplateVersion,
+		},
+	}, nil
+}
+
+func (renderer *Renderer) version(ctx context.Context) (string, error) {
+	command := exec.CommandContext(ctx, renderer.binary, "--version")
+	diagnostics, err := command.CombinedOutput()
+	if ctx.Err() != nil {
+		return "", fmt.Errorf(
+			"Typst version check timed out after %s",
+			renderer.timeout,
+		)
+	}
+	if err != nil {
+		return "", fmt.Errorf(
+			"Typst version check failed: %s",
+			diagnosticSummary(diagnostics),
+		)
+	}
+	version := strings.TrimSpace(string(diagnostics))
+	if version == "" {
+		return "", errors.New("Typst version check returned empty output")
+	}
+	return version, nil
 }
 
 func (renderer *Renderer) compile(

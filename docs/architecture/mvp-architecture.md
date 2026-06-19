@@ -463,6 +463,10 @@ Resume JSON
 - 每次渲染使用独立临时目录。
 - 设置超时并捕获标准错误摘要。
 - 成功后原子移动到 Artifact 路径。
+- 渲染元数据写入 Rendered Stage Result：
+  - 固定期望 Typst CLI：`typst 0.14.2`。
+  - 固定模板版本：`resume.typ/v1`。
+  - 同时记录实际 `typst --version` 输出，便于排查环境差异。
 
 ### 11.3 模板边界
 

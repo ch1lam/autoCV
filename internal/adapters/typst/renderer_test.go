@@ -74,6 +74,12 @@ func TestRendererCompilesChineseAndEnglishTextPDFs(t *testing.T) {
 				!bytes.HasPrefix(rendered.PreviewPages[0], []byte("\x89PNG")) {
 				t.Fatal("expected PNG preview pages")
 			}
+			if rendered.Metadata.Renderer != "typst" ||
+				!strings.HasPrefix(rendered.Metadata.RendererVersion, ExpectedTypstVersion) ||
+				rendered.Metadata.ExpectedRendererVersion != ExpectedTypstVersion ||
+				rendered.Metadata.TemplateVersion != TemplateVersion {
+				t.Fatalf("unexpected render metadata %#v", rendered.Metadata)
+			}
 		})
 	}
 }

@@ -47,6 +47,7 @@ func (repository *memoryArtifactRepository) Save(
 type sequentialRenderer struct {
 	calls            int
 	previewPageCount int
+	metadata         ports.RenderMetadata
 }
 
 func (renderer *sequentialRenderer) Render(
@@ -68,9 +69,19 @@ func (renderer *sequentialRenderer) Render(
 			[]byte(fmt.Sprintf("\x89PNG\r\nsynthetic-page-%d", page)),
 		)
 	}
+	metadata := renderer.metadata
+	if metadata.Renderer == "" {
+		metadata = ports.RenderMetadata{
+			Renderer:                "fixture",
+			RendererVersion:         "fixture-renderer-v1",
+			ExpectedRendererVersion: "fixture-renderer-v1",
+			TemplateVersion:         "fixture-template-v1",
+		}
+	}
 	return ports.RenderedResume{
 		PDF:          []byte("%PDF-1.7\nsynthetic"),
 		PreviewPages: previews,
+		Metadata:     metadata,
 	}, nil
 }
 
@@ -145,7 +156,9 @@ func TestPDFServicePreservesLastArtifactWhenRenderingFails(t *testing.T) {
 	}
 	if !found ||
 		stageResult.Status != workflow.StageStatusSucceeded ||
-		!strings.Contains(stageResult.ResultJSON, `"artifact_id"`) {
+		!strings.Contains(stageResult.ResultJSON, `"artifact_id"`) ||
+		!strings.Contains(stageResult.ResultJSON, `"template_version":"fixture-template-v1"`) ||
+		!strings.Contains(stageResult.ResultJSON, `"renderer_version":"fixture-renderer-v1"`) {
 		t.Fatalf("unexpected PDF stage result found=%v %#v", found, stageResult)
 	}
 	artifactID := rendered.ArtifactID

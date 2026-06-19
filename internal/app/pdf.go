@@ -327,7 +327,7 @@ func (service *PDFService) render(force bool) (PDFWorkspace, error) {
 		run.ID,
 		inputHash,
 		workflow.StageStatusSucceeded,
-		pdfRenderStageResultJSON(artifact, resume),
+		pdfRenderStageResultJSON(artifact, resume, rendered.Metadata),
 		"",
 		artifact.CreatedAt,
 	)
@@ -440,19 +440,28 @@ func hashPDFRenderInput(resume domain.Resume) string {
 func pdfRenderStageResultJSON(
 	artifact domain.Artifact,
 	resume domain.Resume,
+	metadata ports.RenderMetadata,
 ) string {
 	return stageResultJSON(struct {
-		ArtifactID string `json:"artifact_id"`
-		ResumeID   string `json:"resume_id"`
-		InputHash  string `json:"input_hash"`
-		Version    int    `json:"version"`
-		PageCount  int    `json:"page_count"`
+		ArtifactID              string `json:"artifact_id"`
+		ResumeID                string `json:"resume_id"`
+		InputHash               string `json:"input_hash"`
+		Version                 int    `json:"version"`
+		PageCount               int    `json:"page_count"`
+		Renderer                string `json:"renderer,omitempty"`
+		RendererVersion         string `json:"renderer_version,omitempty"`
+		ExpectedRendererVersion string `json:"expected_renderer_version,omitempty"`
+		TemplateVersion         string `json:"template_version,omitempty"`
 	}{
-		ArtifactID: artifact.ID,
-		ResumeID:   resume.ID,
-		InputHash:  hashPDFRenderInput(resume),
-		Version:    resume.Version,
-		PageCount:  len(artifact.PreviewPaths),
+		ArtifactID:              artifact.ID,
+		ResumeID:                resume.ID,
+		InputHash:               hashPDFRenderInput(resume),
+		Version:                 resume.Version,
+		PageCount:               len(artifact.PreviewPaths),
+		Renderer:                metadata.Renderer,
+		RendererVersion:         metadata.RendererVersion,
+		ExpectedRendererVersion: metadata.ExpectedRendererVersion,
+		TemplateVersion:         metadata.TemplateVersion,
 	})
 }
 
