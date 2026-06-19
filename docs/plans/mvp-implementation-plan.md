@@ -344,7 +344,7 @@ Markdown 职业资料
 
 ### 9.4 数据控制
 
-- [ ] Profile 完整导出。
+- [x] Profile 完整导出。
 - [ ] Profile、JD、Run 和 Artifact 删除。
 - [ ] 删除前影响范围预览。
 - [ ] 数据库备份和恢复的最小能力。
