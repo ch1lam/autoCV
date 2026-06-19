@@ -67,8 +67,13 @@ import SettingsWorkspace, {
 } from "./SettingsWorkspace";
 
 type HealthState = "checking" | "ready" | "preview";
-type ProfileImportKind = "docx" | "markdown";
-type ProviderRequestAction = "profileDocx" | "profileMarkdown" | "jd" | "match";
+type ProfileImportKind = "docx" | "markdown" | "pdf";
+type ProviderRequestAction =
+  | "profileDocx"
+  | "profileMarkdown"
+  | "profilePDF"
+  | "jd"
+  | "match";
 
 const providerRequestDetails: Record<
   ProviderRequestAction,
@@ -85,6 +90,14 @@ const providerRequestDetails: Record<
     items: [
       "OOXML 正文、标题、列表和表格文本",
       "Chunk ID 与本地来源定位信息",
+    ],
+  },
+  profilePDF: {
+    kicker: "PROFILE EXTRACTION",
+    title: "提取文本型 PDF 中的可追溯 Evidence",
+    items: [
+      "按页提取的文本层 Source Chunk",
+      "页码与本地来源定位信息",
     ],
   },
   jd: {
@@ -649,6 +662,8 @@ function App() {
       const result =
         kind === "docx"
           ? await ProfileService.ImportDOCX()
+          : kind === "pdf"
+            ? await ProfileService.ImportPDF()
           : await ProfileService.ImportMarkdown();
       if (result.cancelled) {
         setProfileFeedback({
@@ -786,7 +801,7 @@ function App() {
       ]);
       setProfileFeedback({
         tone: "success",
-        text: `已创建 ${overview.name}，可以开始导入 Markdown 或 DOCX 资料。`,
+        text: `已创建 ${overview.name}，可以开始导入 Markdown、DOCX 或 PDF 资料。`,
       });
     } catch (error) {
       setProfileManagementError(
@@ -1337,6 +1352,8 @@ function App() {
   const executeProviderAction = (action: ProviderRequestAction) => {
     if (action === "profileDocx") {
       void handleProfileImport("docx");
+    } else if (action === "profilePDF") {
+      void handleProfileImport("pdf");
     } else if (action === "profileMarkdown") {
       void handleProfileImport("markdown");
     } else if (action === "jd") {
@@ -1676,6 +1693,19 @@ function App() {
                   <IconFileText aria-hidden="true" size={18} stroke={1.65} />
                   导入 DOCX
                 </button>
+                <button
+                  className="button button--secondary"
+                  disabled={isImportingProfile || isExportingProfile}
+                  onClick={() => requestProviderAction("profilePDF")}
+                  type="button"
+                >
+                  <IconFileTypePdf
+                    aria-hidden="true"
+                    size={18}
+                    stroke={1.65}
+                  />
+                  导入 PDF
+                </button>
               </>
             ) : activeNav === "JD 工作区" ? (
               <>
@@ -1878,6 +1908,7 @@ function App() {
             isSavingEvidence={isSavingProfileEvidence}
             onImportDOCX={() => requestProviderAction("profileDocx")}
             onImportMarkdown={() => requestProviderAction("profileMarkdown")}
+            onImportPDF={() => requestProviderAction("profilePDF")}
             onRefresh={() => void refreshProfile()}
             onSearch={() => void handleProfileSearch()}
             onSearchChange={handleProfileSearchChange}

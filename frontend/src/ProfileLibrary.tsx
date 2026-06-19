@@ -5,6 +5,7 @@ import {
   IconCircleCheck,
   IconEdit,
   IconFileText,
+  IconFileTypePdf,
   IconInfoCircle,
   IconLink,
   IconRefresh,
@@ -36,6 +37,7 @@ type ProfileLibraryProps = {
   isSavingEvidence: boolean;
   onImportDOCX: () => void;
   onImportMarkdown: () => void;
+  onImportPDF: () => void;
   onRefresh: () => void;
   onSearch: () => void;
   onSearchChange: (value: string) => void;
@@ -58,6 +60,7 @@ type ProfileLibraryProps = {
 
 type SourceLocator = {
   heading_path?: string[];
+  page?: number;
   start?: number;
   end?: number;
 };
@@ -90,6 +93,19 @@ function formatImportedAt(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+function getDocumentKindLabel(kind: string) {
+  if (kind === "docx") {
+    return "DOCX";
+  }
+  if (kind === "pdf") {
+    return "PDF";
+  }
+  if (kind === "markdown") {
+    return "Markdown";
+  }
+  return kind;
 }
 
 function getEvidenceConflictGroup(
@@ -131,6 +147,7 @@ function ProfileLibrary({
   isSavingEvidence,
   onImportDOCX,
   onImportMarkdown,
+  onImportPDF,
   onRefresh,
   onSearch,
   onSearchChange,
@@ -236,7 +253,9 @@ function ProfileLibrary({
           <div>
             <span className="section-kicker">PROFILE LIBRARY</span>
             <h1>{overview?.name ?? "主资料库"}</h1>
-            <p>导入 Markdown 或 DOCX 职业资料，检查提取结果并追溯每条证据的来源。</p>
+            <p>
+              导入 Markdown、DOCX 或文本型 PDF 职业资料，检查提取结果并追溯每条证据的来源。
+            </p>
           </div>
           <div className="profile-heading-actions">
             <button
@@ -247,6 +266,15 @@ function ProfileLibrary({
             >
               <IconFileText aria-hidden="true" size={18} stroke={1.65} />
               导入 DOCX
+            </button>
+            <button
+              className="button button--secondary profile-heading-action"
+              disabled={isImporting}
+              onClick={onImportPDF}
+              type="button"
+            >
+              <IconFileTypePdf aria-hidden="true" size={18} stroke={1.65} />
+              导入 PDF
             </button>
             <button
               className="button button--primary profile-heading-action"
@@ -451,30 +479,54 @@ function ProfileLibrary({
 
               {overview.documents.length === 0 ? (
                 <div className="library-empty">
-	                  <IconArchive aria-hidden="true" size={28} stroke={1.45} />
-	                  <strong>还没有职业资料</strong>
-	                  <p>从一份 Markdown 或 DOCX 简历开始建立可追溯的 Profile。</p>
-	                  <div className="library-empty-actions">
-	                    <button
-	                      className="button button--secondary"
-	                      disabled={isImporting}
-	                      onClick={onImportDOCX}
-	                      type="button"
-	                    >
-	                      <IconFileText aria-hidden="true" size={17} stroke={1.65} />
-	                      选择 DOCX
-	                    </button>
-	                    <button
-	                      className="button button--secondary"
-	                      disabled={isImporting}
-	                      onClick={onImportMarkdown}
-	                      type="button"
-	                    >
-	                      <IconUpload aria-hidden="true" size={17} stroke={1.65} />
-	                      选择 Markdown
-	                    </button>
-	                  </div>
-	                </div>
+                  <IconArchive aria-hidden="true" size={28} stroke={1.45} />
+                  <strong>还没有职业资料</strong>
+                  <p>
+                    从一份 Markdown、DOCX 或文本型 PDF 简历开始建立可追溯的
+                    Profile。
+                  </p>
+                  <div className="library-empty-actions">
+                    <button
+                      className="button button--secondary"
+                      disabled={isImporting}
+                      onClick={onImportDOCX}
+                      type="button"
+                    >
+                      <IconFileText
+                        aria-hidden="true"
+                        size={17}
+                        stroke={1.65}
+                      />
+                      选择 DOCX
+                    </button>
+                    <button
+                      className="button button--secondary"
+                      disabled={isImporting}
+                      onClick={onImportPDF}
+                      type="button"
+                    >
+                      <IconFileTypePdf
+                        aria-hidden="true"
+                        size={17}
+                        stroke={1.65}
+                      />
+                      选择 PDF
+                    </button>
+                    <button
+                      className="button button--secondary"
+                      disabled={isImporting}
+                      onClick={onImportMarkdown}
+                      type="button"
+                    >
+                      <IconUpload
+                        aria-hidden="true"
+                        size={17}
+                        stroke={1.65}
+                      />
+                      选择 Markdown
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <div className="document-list">
                   <div className="document-list-head" aria-hidden="true">
@@ -493,7 +545,7 @@ function ProfileLibrary({
                         />
                         <strong>{document.originalName}</strong>
                       </span>
-                      <span>Markdown</span>
+                      <span>{getDocumentKindLabel(document.kind)}</span>
                       <span className="parse-status">
                         <IconCircleCheck
                           aria-hidden="true"
@@ -517,7 +569,7 @@ function ProfileLibrary({
               <header className="library-section-heading">
                 <div>
                   <h2>提取证据</h2>
-                  <p>选择一条 Evidence，在右侧核对原始内容与 Markdown 定位信息。</p>
+                  <p>选择一条 Evidence，在右侧核对原始内容与来源定位信息。</p>
                 </div>
                 <span>{overview.evidence.length} 条证据</span>
               </header>
@@ -526,7 +578,7 @@ function ProfileLibrary({
                 <div className="library-empty library-empty--compact">
                   <IconLink aria-hidden="true" size={27} stroke={1.45} />
                   <strong>没有可显示的 Evidence</strong>
-                  <p>导入包含工作经历、项目或技能内容的 Markdown 文件。</p>
+                  <p>导入包含工作经历、项目或技能内容的职业资料文件。</p>
                 </div>
               ) : (
                 <div className="profile-evidence-list">
@@ -634,7 +686,7 @@ function ProfileLibrary({
           <div className="profile-inspector-empty">
             <IconLink aria-hidden="true" size={27} stroke={1.45} />
             <strong>选择一条 Evidence</strong>
-            <p>来源文本和 Markdown 定位信息会显示在这里。</p>
+            <p>来源文本和定位信息会显示在这里。</p>
           </div>
         ) : (
           <>
@@ -930,7 +982,7 @@ function ProfileLibrary({
                     />
                     <span>
                       <strong>{location}</strong>
-                      <small>{document?.originalName ?? "Markdown 来源"}</small>
+                      <small>{document?.originalName ?? "来源文档"}</small>
                     </span>
                     <IconChevronRight
                       aria-hidden="true"
@@ -955,8 +1007,14 @@ function ProfileLibrary({
                 </section>
 
                 <section className="source-locator">
-                  <h3>Markdown 定位</h3>
+                  <h3>来源定位</h3>
                   <dl>
+                    {locator.page ? (
+                      <div>
+                        <dt>页码</dt>
+                        <dd>第 {locator.page} 页</dd>
+                      </div>
+                    ) : null}
                     <div>
                       <dt>标题路径</dt>
                       <dd>

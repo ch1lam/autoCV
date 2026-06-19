@@ -25,6 +25,7 @@ const {
   getOverviewMock,
   importMarkdownMock,
   importDOCXMock,
+  importPDFMock,
   renderPDFMock,
   resolveEvidenceConflictMock,
   generateResumeMock,
@@ -66,6 +67,7 @@ const {
     getWorkflowStatusMock: vi.fn(),
     importDOCXMock: vi.fn(),
     importMarkdownMock: vi.fn(),
+    importPDFMock: vi.fn(),
     renderPDFMock: vi.fn(),
     rerunWorkflowStageMock: vi.fn(),
     resolveEvidenceConflictMock: vi.fn(),
@@ -123,6 +125,7 @@ vi.mock("../bindings/github.com/ch1lam/autocv/internal/app", () => ({
     GetOverview: getOverviewMock,
     ImportDOCX: importDOCXMock,
     ImportMarkdown: importMarkdownMock,
+    ImportPDF: importPDFMock,
     ResolveEvidenceConflict: resolveEvidenceConflictMock,
     SaveEvidence: saveEvidenceMock,
     Search: searchProfileMock,
@@ -732,6 +735,18 @@ describe("Paper Trail match review", () => {
       evidenceCount: 1,
       warnings: [],
     });
+    importPDFMock.mockReset().mockResolvedValue({
+      cancelled: false,
+      duplicate: false,
+      document: {
+        ...profileOverview.documents[0],
+        kind: "pdf",
+        originalName: "backend-profile.pdf",
+      },
+      chunkCount: 1,
+      evidenceCount: 1,
+      warnings: [],
+    });
     renderPDFMock.mockReset().mockResolvedValue(pdfWorkspace);
     exportPDFMock.mockReset().mockResolvedValue({
       cancelled: false,
@@ -1258,6 +1273,25 @@ describe("Paper Trail match review", () => {
     ).toBeInTheDocument();
   });
 
+  it("imports PDF and refreshes the Profile Library", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "资料库" }));
+    await within(screen.getByRole("main")).findByText("backend-profile.md");
+    await user.click(screen.getAllByRole("button", { name: "导入 PDF" })[0]);
+
+    expect(importPDFMock).toHaveBeenCalledOnce();
+    expect(importDOCXMock).not.toHaveBeenCalled();
+    expect(importMarkdownMock).not.toHaveBeenCalled();
+    expect(getOverviewMock).toHaveBeenCalledTimes(2);
+    expect(
+      await screen.findByText(
+        "已导入 backend-profile.pdf，生成 1 条可追溯 Evidence。",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("exports the active Profile as JSON", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -1585,7 +1619,9 @@ describe("Paper Trail match review", () => {
       await screen.findByRole("heading", { name: "海外岗位" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("已创建 海外岗位，可以开始导入 Markdown 或 DOCX 资料。"),
+      screen.getByText(
+        "已创建 海外岗位，可以开始导入 Markdown、DOCX 或 PDF 资料。",
+      ),
     ).toBeInTheDocument();
   });
 
