@@ -35,10 +35,11 @@ type Renderer struct {
 }
 
 type ViewModel struct {
-	Language   string        `json:"language"`
-	TargetRole string        `json:"target_role"`
-	Fonts      []string      `json:"fonts"`
-	Sections   []ViewSection `json:"sections"`
+	Language     string        `json:"language"`
+	TargetRole   string        `json:"target_role"`
+	BodyFonts    []string      `json:"body_fonts"`
+	HeadingFonts []string      `json:"heading_fonts"`
+	Sections     []ViewSection `json:"sections"`
 }
 
 type ViewSection struct {
@@ -255,10 +256,11 @@ func NewViewModel(resume domain.Resume) ViewModel {
 		})
 	}
 	return ViewModel{
-		Language:   string(resume.Language),
-		TargetRole: strings.TrimSpace(resume.TargetRole),
-		Fonts:      fontsFor(resume.Language),
-		Sections:   sections,
+		Language:     string(resume.Language),
+		TargetRole:   strings.TrimSpace(resume.TargetRole),
+		BodyFonts:    bodyFontsFor(resume.Language),
+		HeadingFonts: headingFontsFor(resume.Language),
+		Sections:     sections,
 	}
 }
 
@@ -323,17 +325,46 @@ func sectionHeading(
 	}
 }
 
-func fontsFor(language domain.ResumeLanguage) []string {
+func bodyFontsFor(language domain.ResumeLanguage) []string {
 	if language == domain.ResumeLanguageChinese {
 		return []string{
 			"Charter",
-			"Noto Sans CJK SC",
+			"Songti SC",
+			"PingFang SC",
 			"Hiragino Sans GB",
 			"Arial Unicode MS",
+			"Noto Sans CJK SC",
 			"Liberation Sans",
 		}
 	}
-	return []string{"Charter", "Liberation Sans", "Arial", "DejaVu Sans"}
+	return []string{
+		"Charter",
+		"Libertinus Serif",
+		"Georgia",
+		"Times New Roman",
+		"Liberation Serif",
+		"DejaVu Serif",
+	}
+}
+
+func headingFontsFor(language domain.ResumeLanguage) []string {
+	if language == domain.ResumeLanguageChinese {
+		return []string{
+			"PingFang SC",
+			"Hiragino Sans GB",
+			"Songti SC",
+			"Arial Unicode MS",
+			"Noto Sans CJK SC",
+			"Liberation Sans",
+		}
+	}
+	return []string{
+		"Avenir Next",
+		"Helvetica Neue",
+		"Arial",
+		"Liberation Sans",
+		"DejaVu Sans",
+	}
 }
 
 func diagnosticSummary(output []byte) string {

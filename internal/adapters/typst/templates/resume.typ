@@ -6,7 +6,7 @@
   fill: rgb("#ffffff"),
 )
 #set text(
-  font: data.fonts,
+  font: data.body_fonts,
   size: 9.8pt,
   fill: rgb("#202b36"),
   lang: if data.language == "zh" { "zh" } else { "en" },
@@ -28,6 +28,7 @@
   breakable: false,
 )[
   #text(
+    font: data.heading_fonts,
     size: 10.5pt,
     weight: 700,
     tracking: 0.05em,
@@ -39,6 +40,7 @@
 
 #align(left)[
   #text(
+    font: data.heading_fonts,
     size: 21pt,
     weight: 700,
     fill: rgb("#162f45"),

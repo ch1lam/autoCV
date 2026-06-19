@@ -34,15 +34,31 @@ func TestNewViewModelUsesLanguageSpecificHeadingsAndItems(t *testing.T) {
 	if len(view.Sections) != 2 || len(view.Sections[1].Items) != 3 {
 		t.Fatalf("expected repeated block kinds to share a section: %#v", view)
 	}
-	if !containsString(view.Fonts, "Noto Sans CJK SC") {
-		t.Fatalf("expected portable Chinese font fallback: %#v", view.Fonts)
+	if !containsString(view.BodyFonts, "Songti SC") ||
+		!containsString(view.BodyFonts, "Noto Sans CJK SC") {
+		t.Fatalf("expected calibrated Chinese body fonts: %#v", view.BodyFonts)
+	}
+	if !containsString(view.HeadingFonts, "PingFang SC") ||
+		!containsString(view.HeadingFonts, "Songti SC") {
+		t.Fatalf(
+			"expected calibrated Chinese heading fonts: %#v",
+			view.HeadingFonts,
+		)
 	}
 }
 
-func TestNewViewModelUsesPortableEnglishFontFallback(t *testing.T) {
+func TestNewViewModelUsesCalibratedEnglishFontStacks(t *testing.T) {
 	view := NewViewModel(renderFixture(domain.ResumeLanguageEnglish))
-	if !containsString(view.Fonts, "Liberation Sans") {
-		t.Fatalf("expected portable English font fallback: %#v", view.Fonts)
+	if view.BodyFonts[0] != "Charter" ||
+		!containsString(view.BodyFonts, "Libertinus Serif") {
+		t.Fatalf("expected calibrated English body fonts: %#v", view.BodyFonts)
+	}
+	if view.HeadingFonts[0] != "Avenir Next" ||
+		!containsString(view.HeadingFonts, "Liberation Sans") {
+		t.Fatalf(
+			"expected calibrated English heading fonts: %#v",
+			view.HeadingFonts,
+		)
 	}
 }
 
