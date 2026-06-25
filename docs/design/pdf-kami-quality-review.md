@@ -2,7 +2,9 @@
 
 > 日期：2026-06-19
 >
-> 范围：M4 PDF 质量，AutoCV Typst 简历模板与 `kami` 参考设计语言的人工对照。
+> 范围：M4 PDF 质量，AutoCV 旧 Typst 简历模板与 `kami` 参考设计语言的人工对照。
+>
+> 2026-06-25 更新：产品方向已从“Typst 接近 Kami”切换为“内化 Kami-style HTML -> PDF 流程”。本文保留为旧基线复盘，新的实现不再接受“白底、Typst、仅视觉参考”作为目标差异。
 
 ## 1. 对照依据
 
@@ -37,12 +39,15 @@
 
 ## 4. 结论
 
-MVP PDF 模板已经达到 `kami` 参考语言中与简历投递兼容的部分：serif-led、ink-blue、紧凑节奏和克制层级。暖纸背景、装饰性排版和专用字体属于已接受差异，不进入当前 MVP 运行时。
+旧 MVP PDF 模板已经达到 `kami` 参考语言中与简历投递兼容的部分：serif-led、ink-blue、紧凑节奏和克制层级。这个结论只适用于旧 Typst 实现。
+
+新的目标是 AutoCV 自有的 Kami-style resume 模板：HTML 是排版源文件，独立排版 Agent 填充 body，Go 校验结构/事实/安全，WeasyPrint 生成 PDF，PDFium 生成 PNG 预览。`kami` skill 仍不作为运行时组件。
 
 M5 真实样本验收时仍需使用至少一份中文和一份英文真实脱敏样本复查视觉质量，特别是多页经历、长项目列表和链接密集内容。
 
 ## 5. 验证
 
-- `GOCACHE=/tmp/autocv-go-cache go test ./internal/adapters/typst`
+- `GOCACHE=/tmp/autocv-go-cache go test ./internal/adapters/htmlresume`
+- `GOCACHE=/tmp/autocv-go-cache go test ./internal/app`
 - `GOCACHE=/tmp/autocv-go-cache go test ./...`
 - `git diff --check`

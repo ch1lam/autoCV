@@ -435,54 +435,60 @@ ReviewResume
 DocumentMetadata + Ordered Source Chunks + Warnings
 ```
 
-## 11. PDF 渲染
+## 11. HTML/PDF 渲染
 
 ### 11.1 决策
 
-MVP 使用 Typst：
+MVP 渲染方向切换为 Kami-style HTML -> PDF：
 
 ```text
-Resume JSON
-  -> Go View Model
-  -> Typst data/template
-  -> typst compile
+Resume v2 JSON
+  -> 独立 HTML 排版 Agent
+  -> 受约束 HTML artifact
+  -> HTML 校验
+  -> WeasyPrint
   -> PDF
+  -> PDFium PNG preview
 ```
 
 原因：
 
 - 输出文本可选择，适合基础 ATS 读取。
 - 模板可版本化和测试。
-- 比直接操作 PDF 坐标更容易维护。
-- 中英文排版和分页控制优于简单 Markdown 转 PDF。
+- HTML 是排版源文件，便于复用 Kami 的模板填充工作流。
+- 可让模型处理职业差异化 section 标题和排版取舍，但仍由 Go 校验事实、ID、锁定和安全边界。
+- WeasyPrint 的分页、字体和 PDF 语义能力优于简单 Markdown 转 PDF。
 
 ### 11.2 运行方式
 
-- macOS 包中携带已验证的 Typst CLI，或在开发期使用固定路径。
+- macOS 包中携带已验证的本地 renderer sidecar，不要求用户安装 Typst、Python 或 Homebrew。
 - Go 使用参数数组启动进程，不通过 shell 拼接命令。
 - 每次渲染使用独立临时目录。
 - 设置超时并捕获标准错误摘要。
 - 成功后原子移动到 Artifact 路径。
 - 渲染元数据写入 Rendered Stage Result：
-  - 固定期望 Typst CLI：`typst 0.14.2`。
-  - 固定模板版本：`resume.typ/v1`。
-  - 同时记录实际 `typst --version` 输出，便于排查环境差异。
+  - renderer 名称和实际版本。
+  - HTML 模板 ID/version。
+  - HTML composer prompt/model version。
+  - 字体包版本。
+  - PDF preview renderer 版本。
+
+渲染缓存必须包含 Resume v2 hash、composer 版本、模板版本、HTML hash、renderer 版本和字体版本，避免模板或 renderer 变化后复用旧 PDF。
 
 ### 11.3 模板边界
 
-首个闭环只有一个模板：
+首个闭环只有一个 Kami-style resume 模板族：
 
 - 单栏。
-- ATS 友好。
-- 中文和英文共用数据结构。
-- 字体和字号可按语言切换；模板区分正文与标题字体栈。
-- 中文正文优先使用 `Charter` + `Songti SC`，标题优先使用 `PingFang SC`。
-- 英文正文优先使用 `Charter`，标题优先使用 `Avenir Next`。
-- Markdown 链接和裸 URL 在 PDF 中渲染为 Typst `link`。
-- Section 标题和首条内容使用不可拆分块，单条内容也不跨页拆分，避免标题悬空和孤行。
+- warm parchment 画布、ink-blue accent、serif-led hierarchy、紧凑 editorial rhythm。
+- 中文优先使用可再分发开源 serif 字体；英文优先使用开源或系统 serif fallback。
+- 中文和英文共用 Resume v2 业务结构，但允许可见 section 标题由模型按岗位选择。
+- 排版 Agent 只能复制完整模板并填充 `<body>`；`<head>`、CSS、font-face 和设计 token 不由模型改写。
+- 所有内容节点保留 `data-autocv-id` / `data-autocv-field`，用于审阅、锁定、HTML 校验和后续定位。
+- HTML 通过结构、安全和事实一致性校验后才能进入 WeasyPrint。
 - 默认两页目标，不通过缩小到不可读字号强行压页。
 
-`kami` 用于比较视觉质量，不作为 AutoCV 运行时组件。
+`kami` 是设计和工作流参考，不作为 AutoCV 运行时组件；AutoCV 只内化 resume 所需的模板、校验和 renderer 边界。
 
 ## 12. Wails 前后端契约
 

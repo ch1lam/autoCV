@@ -162,7 +162,7 @@ Current MVP implementation choices:
 - Frontend: React and TypeScript
 - Local storage: SQLite
 - First AI integration: a provider adapter backed by OpenAI
-- PDF rendering: local Typst templates
+- PDF rendering: Kami-style HTML templates, a constrained HTML composer, and a local WeasyPrint/PDFium renderer
 - Longer-term AI integration: multiple providers
 - PDF quality benchmark: the resume output currently achievable through the `kami` skill
 
@@ -182,7 +182,7 @@ Markdown-to-PDF vertical flow:
 - Structured JSON logs with default content and secret redaction.
 - Strict JD Analysis Schema validation and a fixture-backed Fake Provider.
 - Structured Resume versions with lock-preserving regeneration.
-- Local Typst PDF rendering, Artifact recovery, preview, and export.
+- Local PDF Artifact recovery, preview, and export.
 - Fake Provider integration coverage from Markdown import through a persisted
   PDF Artifact.
 - Go and frontend unit tests plus a unified verification command.
@@ -201,12 +201,11 @@ validation. Real local resumes and JDs are never committed to the repository.
 ## Local Development
 
 Required Go and Node versions are pinned in `go.mod`, `.nvmrc`, and
-`frontend/package.json`. PDF rendering currently requires Typst `0.14.2`
-available on `PATH`; set `AUTOCV_TYPST_BIN` when using another verified binary
-location.
+`frontend/package.json`. The PDF renderer is moving from Typst to a packaged
+HTML -> WeasyPrint -> PDFium sidecar, so local development should use the
+project renderer scripts instead of depending on a global Typst install.
 
 ```bash
-typst --version
 npm --prefix frontend install
 wails3 task verify
 wails3 task dev

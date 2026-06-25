@@ -20,7 +20,8 @@ Markdown 职业资料
   -> JD 分析
   -> 资料匹配
   -> 生成 Markdown 简历
-  -> Typst PDF
+  -> Kami-style HTML
+  -> WeasyPrint PDF
   -> 应用内预览和导出
 ```
 
@@ -31,7 +32,7 @@ Markdown 职业资料
 - 每个里程碑都交付可运行的用户流程。
 - 先使用合成样本和 Fake Provider，之后再接真实 AI。
 - Go 持有业务状态，前端不复制工作流规则。
-- AI 输出先进入结构化 Schema，再生成 Markdown 和 PDF。
+- AI 输出先进入结构化 Schema，再由独立排版步骤生成受约束 HTML，最后渲染 PDF。
 - 所有数据库变化使用迁移。
 - 私有简历和 JD 不进入 Git。
 - 不为第二阶段 Job Radar 提前建设模块。
@@ -191,7 +192,7 @@ Markdown 职业资料
 - Markdown 可以重新打开。
 - 编辑后能够保存一个新 Resume 版本。
 
-### 6.6 Slice 5：Typst PDF
+### 6.6 Slice 5：PDF 渲染
 
 任务：
 
@@ -208,6 +209,24 @@ Markdown 职业资料
 - PDF 文本可复制。
 - 预览和导出使用同一个 Artifact。
 - 渲染失败不覆盖上一次成功 PDF。
+
+### 6.6.1 Slice 5b：Kami-style HTML/PDF 迁移
+
+任务：
+
+- [ ] 引入 Resume v2 动态 section/item/field 结构，兼容旧 block 数据。
+- [ ] 增加独立 HTML composer，让模型复制模板并填充 body。
+- [ ] 添加 HTML 模板 hash、CSS 不变性、安全标签、data-autocv-id 和字段一致性校验。
+- [ ] 保存 HTML artifact，并以 HTML hash 驱动 PDF 缓存。
+- [ ] 使用 WeasyPrint 生成 PDF，使用 PDFium 生成 PNG preview。
+- [ ] macOS 包内携带 renderer sidecar 和开源字体，移除运行时 Typst 要求。
+
+验收：
+
+- 软件、设计、销售等不同职业可以生成不同可见 section 标题。
+- 匹配、审阅、来源追溯、锁定和 Markdown 编辑流程继续可用。
+- 模型改写 CSS、插入脚本、遗漏 ID 或篡改字段文本会被拒绝。
+- 中英文 PDF 文本可复制，预览和导出使用同一份 artifact。
 
 ### 6.7 Slice 6：真实 OpenAI Provider
 
