@@ -375,12 +375,18 @@ func (service *ResumeService) generate(
 		return ResumeWorkspace{}, fmt.Errorf("validate resume draft: %w", err)
 	}
 	resume := domain.Resume{
-		ID:                uuid.NewString(),
-		RunID:             run.ID,
-		InputHash:         inputHash,
-		Version:           version,
-		Language:          draft.Language,
-		TargetRole:        draft.TargetRole,
+		ID:            uuid.NewString(),
+		RunID:         run.ID,
+		InputHash:     inputHash,
+		Version:       version,
+		SchemaVersion: domain.ResumeSchemaV2,
+		Language:      draft.Language,
+		TargetRole:    draft.TargetRole,
+		Header: domain.ResumeHeader{
+			Name:       input.profile.Name,
+			TargetRole: draft.TargetRole,
+			Contacts:   make([]domain.ResumeContact, 0),
+		},
 		OptimizationNotes: append([]string(nil), draft.OptimizationNotes...),
 		CreatedAt:         now,
 		Blocks:            resumeBlocksFromDraft(run.ID, draft.Blocks),
@@ -393,6 +399,7 @@ func (service *ResumeService) generate(
 			&resume.OptimizationNotes,
 		)
 	}
+	resume = domain.NormalizeResume(resume)
 	resume.Markdown = domain.RenderResumeMarkdown(resume)
 	if err := domain.ValidateResume(resume, input.evidence); err != nil {
 		service.saveResumeDraftStageResult(
@@ -613,6 +620,7 @@ func (service *ResumeService) updateCurrentResume(
 	updated.ID = uuid.NewString()
 	updated.Version = current.Version + 1
 	updated.CreatedAt = now
+	updated = domain.NormalizeResume(updated)
 	if err := domain.ValidateResume(updated, input.evidence); err != nil {
 		return ResumeWorkspace{}, fmt.Errorf("validate updated resume: %w", err)
 	}
@@ -864,6 +872,7 @@ func resumeWorkspaceFrom(
 	resume domain.Resume,
 	evidence []domain.Evidence,
 ) ResumeWorkspace {
+	resume = domain.NormalizeResume(resume)
 	exportIssues := domain.ResumeExportIssues(resume)
 	strategy := resumePackagingStrategyForDisplay(run.PackagingLevel)
 	return ResumeWorkspace{

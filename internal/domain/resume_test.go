@@ -66,6 +66,62 @@ func TestApplyResumeMarkdownPreservesBlockIdentity(t *testing.T) {
 	}
 }
 
+func TestResumeV2SupportsDynamicSectionTitles(t *testing.T) {
+	resume := validResume()
+	resume.SchemaVersion = ResumeSchemaV2
+	resume.Sections = []ResumeSection{{
+		ID:    "section-selected-work",
+		Title: "代表作品",
+		Items: []ResumeItem{{
+			ID:                "block-1",
+			Kind:              ResumeBlockProject,
+			Content:           "负责 Go 服务开发。",
+			SourceEvidenceIDs: []string{"evidence-1"},
+			GroundingLevel:    GroundingSource,
+			Optimization:      "按作品集岗位突出交付产物。",
+		}},
+	}}
+	resume.Blocks = nil
+
+	normalized := NormalizeResume(resume)
+	if normalized.Blocks[0].ID != "block-1" {
+		t.Fatalf("expected v2 item to keep stable review id")
+	}
+	if normalized.Blocks[0].Kind != ResumeBlockProject {
+		t.Fatalf("unexpected compatibility block kind %q", normalized.Blocks[0].Kind)
+	}
+	markdown := RenderResumeMarkdown(resume)
+	if !strings.Contains(markdown, "## 代表作品") {
+		t.Fatalf("expected dynamic section title in Markdown:\n%s", markdown)
+	}
+	if strings.Contains(markdown, "## 项目经历") {
+		t.Fatalf("did not expect fixed project title in Markdown:\n%s", markdown)
+	}
+
+	edited := strings.Replace(
+		markdown,
+		"负责 Go 服务开发。",
+		"负责 Go 服务开发与作品交付。",
+		1,
+	)
+	updated, err := ApplyResumeMarkdown(resume, edited)
+	if err != nil {
+		t.Fatalf("apply v2 resume Markdown: %v", err)
+	}
+	if updated.Sections[0].Title != "代表作品" {
+		t.Fatalf("expected dynamic title to survive edit")
+	}
+	if updated.Sections[0].Items[0].Content != "负责 Go 服务开发与作品交付。" {
+		t.Fatalf(
+			"expected v2 item content to update, got %q",
+			updated.Sections[0].Items[0].Content,
+		)
+	}
+	if updated.Blocks[0].GroundingLevel != GroundingUserConfirmed {
+		t.Fatalf("expected edited v2 item to become user confirmed")
+	}
+}
+
 func TestApplyResumeMarkdownRejectsStructureAndLockedChanges(t *testing.T) {
 	resume := validResume()
 	markdown := RenderResumeMarkdown(resume)

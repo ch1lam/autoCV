@@ -84,12 +84,51 @@ type Resume struct {
 	RunID             string
 	InputHash         string
 	Version           int
+	SchemaVersion     int
 	Language          ResumeLanguage
 	TargetRole        string
+	Header            ResumeHeader
+	Sections          []ResumeSection
 	Blocks            []ResumeBlock
 	OptimizationNotes []string
 	Markdown          string
 	CreatedAt         time.Time
+}
+
+const (
+	ResumeSchemaV1 = 1
+	ResumeSchemaV2 = 2
+)
+
+type ResumeHeader struct {
+	Name       string          `json:"name"`
+	TargetRole string          `json:"target_role"`
+	Contacts   []ResumeContact `json:"contacts"`
+}
+
+type ResumeContact struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+	Href  string `json:"href,omitempty"`
+}
+
+type ResumeSection struct {
+	ID     string       `json:"id"`
+	Title  string       `json:"title"`
+	Intent string       `json:"intent,omitempty"`
+	Items  []ResumeItem `json:"items"`
+}
+
+type ResumeItem struct {
+	ID                string          `json:"id"`
+	Kind              ResumeBlockKind `json:"kind"`
+	Title             string          `json:"title,omitempty"`
+	Subtitle          string          `json:"subtitle,omitempty"`
+	Content           string          `json:"content"`
+	Locked            bool            `json:"locked"`
+	SourceEvidenceIDs []string        `json:"source_evidence_ids"`
+	GroundingLevel    GroundingLevel  `json:"grounding_level"`
+	Optimization      string          `json:"optimization"`
 }
 
 type ResumeBlock struct {
@@ -151,6 +190,7 @@ func ValidateResumeDraft(
 }
 
 func ValidateResume(resume Resume, evidence []Evidence) error {
+	resume = NormalizeResume(resume)
 	if strings.TrimSpace(resume.ID) == "" {
 		return errors.New("resume id is empty")
 	}
@@ -162,6 +202,41 @@ func ValidateResume(resume Resume, evidence []Evidence) error {
 	}
 	if resume.Version < 1 {
 		return fmt.Errorf("resume version %d is invalid", resume.Version)
+	}
+	if resume.SchemaVersion != ResumeSchemaV1 &&
+		resume.SchemaVersion != ResumeSchemaV2 {
+		return fmt.Errorf(
+			"resume schema version %d is invalid",
+			resume.SchemaVersion,
+		)
+	}
+	if strings.TrimSpace(resume.Header.TargetRole) == "" {
+		return errors.New("resume header target role is empty")
+	}
+	if len(resume.Sections) == 0 {
+		return errors.New("resume sections are empty")
+	}
+	seenSectionIDs := make(map[string]struct{}, len(resume.Sections))
+	for sectionIndex, section := range resume.Sections {
+		if strings.TrimSpace(section.ID) == "" {
+			return fmt.Errorf("resume sections[%d] id is empty", sectionIndex)
+		}
+		if _, exists := seenSectionIDs[section.ID]; exists {
+			return fmt.Errorf("duplicate resume section id %q", section.ID)
+		}
+		seenSectionIDs[section.ID] = struct{}{}
+		if strings.TrimSpace(section.Title) == "" {
+			return fmt.Errorf(
+				"resume section %q title is empty",
+				section.ID,
+			)
+		}
+		if len(section.Items) == 0 {
+			return fmt.Errorf(
+				"resume section %q items are empty",
+				section.ID,
+			)
+		}
 	}
 	draft := ResumeDraft{
 		Language:          resume.Language,
@@ -190,6 +265,7 @@ func ValidateResume(resume Resume, evidence []Evidence) error {
 }
 
 func ResumeExportIssues(resume Resume) []string {
+	resume = NormalizeResume(resume)
 	issues := make([]string, 0)
 	for _, block := range resume.Blocks {
 		if block.GroundingLevel == GroundingUserConfirmed {
@@ -221,20 +297,24 @@ func ValidateResumeForExport(resume Resume) error {
 }
 
 func RenderResumeMarkdown(resume Resume) string {
+	resume = NormalizeResume(resume)
 	var builder strings.Builder
 	builder.WriteString("# ")
 	builder.WriteString(strings.TrimSpace(resume.TargetRole))
 	builder.WriteString("\n")
-	for _, block := range resume.Blocks {
+	for _, section := range resume.Sections {
 		builder.WriteString("\n## ")
-		builder.WriteString(resumeBlockLabel(resume.Language, block.Kind))
+		builder.WriteString(strings.TrimSpace(section.Title))
 		builder.WriteString("\n\n")
-		builder.WriteString(resumeBlockStart(block.ID))
-		builder.WriteString("\n")
-		builder.WriteString(renderResumeBlockContent(block))
-		builder.WriteString("\n")
-		builder.WriteString(resumeBlockEnd(block.ID))
-		builder.WriteString("\n")
+		for _, item := range section.Items {
+			block := resumeBlockFromItem(item)
+			builder.WriteString(resumeBlockStart(block.ID))
+			builder.WriteString("\n")
+			builder.WriteString(renderResumeBlockContent(block))
+			builder.WriteString("\n")
+			builder.WriteString(resumeBlockEnd(block.ID))
+			builder.WriteString("\n")
+		}
 	}
 	return builder.String()
 }
@@ -253,6 +333,7 @@ func ApplyResumeMarkdown(
 	existing Resume,
 	markdown string,
 ) (Resume, error) {
+	existing = NormalizeResume(existing)
 	if strings.TrimSpace(markdown) == "" {
 		return Resume{}, errors.New("resume Markdown is empty")
 	}
@@ -304,8 +385,129 @@ func ApplyResumeMarkdown(
 			updated.Blocks[index].GroundingLevel = GroundingUserConfirmed
 		}
 	}
+	updated.Sections = updateResumeSectionsFromBlocks(
+		updated.Sections,
+		updated.Blocks,
+	)
 	updated.Markdown = markdown
 	return updated, nil
+}
+
+func NormalizeResume(resume Resume) Resume {
+	if resume.SchemaVersion == 0 {
+		resume.SchemaVersion = ResumeSchemaV1
+	}
+	resume.TargetRole = strings.TrimSpace(resume.TargetRole)
+	resume.Header.TargetRole = strings.TrimSpace(resume.Header.TargetRole)
+	if resume.Header.TargetRole == "" {
+		resume.Header.TargetRole = resume.TargetRole
+	}
+	if resume.TargetRole == "" {
+		resume.TargetRole = resume.Header.TargetRole
+	}
+	if len(resume.Sections) == 0 && len(resume.Blocks) > 0 {
+		resume.Sections = resumeSectionsFromBlocks(
+			resume.Language,
+			resume.Blocks,
+		)
+	}
+	if len(resume.Sections) > 0 && len(resume.Blocks) > 0 {
+		resume.Sections = updateResumeSectionsFromBlocks(
+			resume.Sections,
+			resume.Blocks,
+		)
+	}
+	if len(resume.Blocks) == 0 && len(resume.Sections) > 0 {
+		resume.Blocks = resumeBlocksFromSections(resume.Sections)
+	}
+	if len(resume.Sections) > 0 {
+		resume.SchemaVersion = ResumeSchemaV2
+	}
+	return resume
+}
+
+func resumeSectionsFromBlocks(
+	language ResumeLanguage,
+	blocks []ResumeBlock,
+) []ResumeSection {
+	sections := make([]ResumeSection, 0, len(blocks))
+	for _, block := range blocks {
+		sections = append(sections, ResumeSection{
+			ID:    "section-" + block.ID,
+			Title: resumeBlockLabel(language, block.Kind),
+			Items: []ResumeItem{resumeItemFromBlock(block)},
+		})
+	}
+	return sections
+}
+
+func resumeBlocksFromSections(sections []ResumeSection) []ResumeBlock {
+	blocks := make([]ResumeBlock, 0)
+	for _, section := range sections {
+		for _, item := range section.Items {
+			blocks = append(blocks, resumeBlockFromItem(item))
+		}
+	}
+	return blocks
+}
+
+func updateResumeSectionsFromBlocks(
+	sections []ResumeSection,
+	blocks []ResumeBlock,
+) []ResumeSection {
+	blocksByID := make(map[string]ResumeBlock, len(blocks))
+	for _, block := range blocks {
+		blocksByID[block.ID] = block
+	}
+	updated := append([]ResumeSection(nil), sections...)
+	for sectionIndex := range updated {
+		updated[sectionIndex].Items = append(
+			[]ResumeItem(nil),
+			updated[sectionIndex].Items...,
+		)
+		for itemIndex := range updated[sectionIndex].Items {
+			item := updated[sectionIndex].Items[itemIndex]
+			block, exists := blocksByID[item.ID]
+			if !exists {
+				continue
+			}
+			updated[sectionIndex].Items[itemIndex].Content = block.Content
+			updated[sectionIndex].Items[itemIndex].Locked = block.Locked
+			updated[sectionIndex].Items[itemIndex].SourceEvidenceIDs = append(
+				[]string(nil),
+				block.SourceEvidenceIDs...,
+			)
+			updated[sectionIndex].Items[itemIndex].GroundingLevel =
+				block.GroundingLevel
+			updated[sectionIndex].Items[itemIndex].Optimization =
+				block.Optimization
+		}
+	}
+	return updated
+}
+
+func resumeItemFromBlock(block ResumeBlock) ResumeItem {
+	return ResumeItem{
+		ID:                block.ID,
+		Kind:              block.Kind,
+		Content:           block.Content,
+		Locked:            block.Locked,
+		SourceEvidenceIDs: append([]string(nil), block.SourceEvidenceIDs...),
+		GroundingLevel:    block.GroundingLevel,
+		Optimization:      block.Optimization,
+	}
+}
+
+func resumeBlockFromItem(item ResumeItem) ResumeBlock {
+	return ResumeBlock{
+		ID:                item.ID,
+		Kind:              item.Kind,
+		Content:           item.Content,
+		Locked:            item.Locked,
+		SourceEvidenceIDs: append([]string(nil), item.SourceEvidenceIDs...),
+		GroundingLevel:    item.GroundingLevel,
+		Optimization:      item.Optimization,
+	}
 }
 
 func validateResumeBlockDraft(

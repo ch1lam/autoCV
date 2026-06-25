@@ -16,10 +16,13 @@ type ResumeRepository struct {
 }
 
 type resumeStructureSnapshot struct {
-	Language          domain.ResumeLanguage `json:"language"`
-	TargetRole        string                `json:"target_role"`
-	Blocks            []domain.ResumeBlock  `json:"blocks"`
-	OptimizationNotes []string              `json:"optimization_notes"`
+	SchemaVersion     int                    `json:"schema_version"`
+	Language          domain.ResumeLanguage  `json:"language"`
+	TargetRole        string                 `json:"target_role"`
+	Header            domain.ResumeHeader    `json:"header"`
+	Sections          []domain.ResumeSection `json:"sections"`
+	Blocks            []domain.ResumeBlock   `json:"blocks"`
+	OptimizationNotes []string               `json:"optimization_notes"`
 }
 
 func NewResumeRepository(db *sql.DB) *ResumeRepository {
@@ -229,9 +232,13 @@ func (repository *ResumeRepository) SaveVersion(
 	run domain.ResumeRun,
 	resume domain.Resume,
 ) error {
+	resume = domain.NormalizeResume(resume)
 	structureJSON, err := json.Marshal(resumeStructureSnapshot{
+		SchemaVersion:     resume.SchemaVersion,
 		Language:          resume.Language,
 		TargetRole:        resume.TargetRole,
+		Header:            resume.Header,
+		Sections:          resume.Sections,
 		Blocks:            resume.Blocks,
 		OptimizationNotes: resume.OptimizationNotes,
 	})
@@ -419,11 +426,15 @@ func (repository *ResumeRepository) getLatestResume(
 	}
 	resume.Language = snapshot.Language
 	resume.TargetRole = snapshot.TargetRole
+	resume.SchemaVersion = snapshot.SchemaVersion
+	resume.Header = snapshot.Header
+	resume.Sections = snapshot.Sections
 	resume.OptimizationNotes = snapshot.OptimizationNotes
 	resume.Blocks, err = repository.listResumeBlocks(ctx, resume.ID)
 	if err != nil {
 		return domain.Resume{}, false, err
 	}
+	resume = domain.NormalizeResume(resume)
 	return resume, true, nil
 }
 
