@@ -87,7 +87,7 @@
 - TypeScript/React：运行类型检查、相关测试和 lint。
 - 数据库：运行迁移测试，并验证重复启动或重复迁移。
 - AI Schema：使用固定 Fixture 验证成功、格式错误和缺失字段。
-- Typst/PDF：至少完成模板编译；影响排版时检查中英文 PDF。
+- HTML/PDF：至少完成 HTML 校验和 renderer 合同测试；影响排版时检查中英文 PDF。
 - 文档：检查相对链接、代码围栏和 `git diff --check`。
 - Wails 前后端交互：检查生成 Binding，并验证实际桌面流程。
 

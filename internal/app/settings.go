@@ -49,8 +49,8 @@ var localOnlySummary = []ProviderDataSummary{
 		Description: "Markdown、PDF 与 DOCX 原文件保留在本地受管理目录。",
 	},
 	{
-		Label:       "Typst 与 PDF 产物",
-		Description: "排版、预览和导出完全在本机执行。",
+		Label:       "HTML/PDF 渲染产物",
+		Description: "HTML 排版、PDF 预览和导出完全在本机执行。",
 	},
 }
 

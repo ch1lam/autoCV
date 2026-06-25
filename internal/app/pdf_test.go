@@ -56,7 +56,7 @@ func (renderer *sequentialRenderer) Render(
 ) (ports.RenderedResume, error) {
 	renderer.calls++
 	if renderer.calls > 1 {
-		return ports.RenderedResume{}, errors.New("synthetic Typst failure")
+		return ports.RenderedResume{}, errors.New("synthetic PDF render failure")
 	}
 	pageCount := renderer.previewPageCount
 	if pageCount == 0 {
@@ -199,7 +199,7 @@ func TestPDFServicePreservesLastArtifactWhenRenderingFails(t *testing.T) {
 	}
 	if !found ||
 		stageResult.Status != workflow.StageStatusFailed ||
-		!strings.Contains(stageResult.ErrorJSON, "synthetic Typst failure") {
+		!strings.Contains(stageResult.ErrorJSON, "synthetic PDF render failure") {
 		t.Fatalf("unexpected failed PDF stage result found=%v %#v", found, stageResult)
 	}
 	restored, err := service.GetWorkspace()

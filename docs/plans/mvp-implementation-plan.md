@@ -196,10 +196,10 @@ Markdown 职业资料
 
 任务：
 
-- [x] 建立 Resume 到 Typst View Model。
+- [x] 建立 Resume 到旧 PDF View Model。
 - [x] 创建单栏 ATS 友好模板。
 - [x] 配置中英文字体。
-- [x] 实现本地 Typst 执行、超时和错误捕获。
+- [x] 实现本地旧 PDF renderer 执行、超时和错误捕获。
 - [x] 保存 PDF Artifact。
 - [x] 在应用中预览，并导出 Markdown/PDF。
 
@@ -214,12 +214,12 @@ Markdown 职业资料
 
 任务：
 
-- [ ] 引入 Resume v2 动态 section/item/field 结构，兼容旧 block 数据。
-- [ ] 增加独立 HTML composer，让模型复制模板并填充 body。
-- [ ] 添加 HTML 模板 hash、CSS 不变性、安全标签、data-autocv-id 和字段一致性校验。
-- [ ] 保存 HTML artifact，并以 HTML hash 驱动 PDF 缓存。
-- [ ] 使用 WeasyPrint 生成 PDF，使用 PDFium 生成 PNG preview。
-- [ ] macOS 包内携带 renderer sidecar 和开源字体，移除运行时 Typst 要求。
+- [x] 引入 Resume v2 动态 section/item/field 结构，兼容旧 block 数据。
+- [x] 增加独立 HTML composer，让模型复制模板并填充 body。
+- [x] 添加 HTML 模板 hash、CSS 不变性、安全标签、data-autocv-id 和字段一致性校验。
+- [x] 以 HTML hash、template 和 composer key 驱动 PDF 缓存。
+- [x] 使用 WeasyPrint 生成 PDF，使用 PDFium 生成 PNG preview。
+- [ ] macOS 包内携带 renderer sidecar 和开源字体。
 
 验收：
 
@@ -359,7 +359,7 @@ Markdown 职业资料
 - [x] 检查链接、分页、孤行和标题断页。
 - [x] 增加两页警告。
 - [x] 与 `kami` 参考样式做人工比较。
-- [x] 固定 Typst 和模板版本。
+- [x] 固定 HTML 模板和 renderer 版本。
 
 ### 9.4 数据控制
 
@@ -374,7 +374,7 @@ Markdown 职业资料
 ### 10.1 合成测试
 
 - [x] 仓库内提供不包含真实个人信息的中英文样本。
-- [ ] CI 完成 Go 单元测试、前端检查和 Typst 模板测试。
+- [ ] CI 完成 Go 单元测试、前端检查和 HTML/PDF renderer 合同测试。
 - [x] Fake Provider 端到端流程稳定通过。
 
 ### 10.2 私有真实样本
@@ -405,7 +405,7 @@ Markdown 职业资料
 - [ ] 网络失败和 Provider 失败测试。
 - [ ] 私有数据删除测试。
 - [ ] README 安装、配置和限制说明。
-- [ ] 第三方依赖和 Typst 许可检查。
+- [ ] 第三方依赖、WeasyPrint/PDFium 和字体许可检查。
 
 ## 11. 初始工作项顺序
 
@@ -420,7 +420,7 @@ Markdown 职业资料
 7. 实现 JD 粘贴和分析。
 8. 实现 Match 与确定性评分。
 9. 实现 Resume Schema 和 Markdown 输出。
-10. 实现 Typst 模板、PDF 预览和导出。
+10. 实现 HTML 模板、PDF 预览和导出。
 11. 实现 OpenAI Provider 和 Keychain。
 12. 使用首组真实资料验收 M1。
 
@@ -439,9 +439,9 @@ Markdown 职业资料
 | AI 输出不稳定 | 结构化 Schema、一次修复、Fixture 合约测试 |
 | 内容过度包装 | Go 侧内容政策、来源引用、用户确认、真实样本 |
 | 匹配分误导 | 确定性计算、分项解释、硬条件上限 |
-| PDF 质量不足 | Typst 模板、固定字体、Artifact 测试、人工对照 |
+| PDF 质量不足 | HTML 模板、固定字体、Artifact 测试、人工对照 |
 | PDF/DOCX 解析差异大 | 后置到 M4，使用真实格式样本选择解析器 |
-| Wails/Typst 打包问题 | M0 和 M1 提前做发布构建，不等到最后 |
+| Wails/renderer 打包问题 | M0 和 M1 提前做发布构建，不等到最后 |
 | 私有资料泄露 | `.gitignore`、Keychain、脱敏日志、诊断包检查 |
 | 工作流状态复杂 | 显式状态机、阶段结果持久化、输入 Hash |
 | 范围膨胀 | 以 M1 闭环和产品规格的排除清单为准 |
@@ -454,7 +454,7 @@ Markdown 职业资料
 - DOCX/PDF 解析库。
 - OpenAI 具体模型。
 - Keychain 封装库。
-- Typst 字体组合。
+- HTML/PDF renderer 字体组合。
 
 Spike 必须输出：
 

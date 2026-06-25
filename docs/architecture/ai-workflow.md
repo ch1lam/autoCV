@@ -290,7 +290,7 @@ The MVP implementation baseline is defined in the [MVP architecture](./mvp-archi
 - React and TypeScript frontend
 - SQLite with FTS5
 - Provider task interface with OpenAI as the first adapter
-- Typst-based local PDF rendering
+- Kami-style HTML composition and local WeasyPrint/PDFium rendering
 - No Agent framework, vector database, cloud account, or microservice split in the MVP
 
 The delivery order and acceptance gates are defined in the [MVP implementation plan](../plans/mvp-implementation-plan.md).

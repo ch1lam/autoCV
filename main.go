@@ -201,7 +201,7 @@ func run() error {
 	resumeRenderer, err := htmlresume.NewRenderer(
 		provider,
 		htmlresume.NewSidecar(
-			os.Getenv("AUTOCV_PDF_RENDERER_BIN"),
+			defaultPDFRendererBinary(),
 			30*time.Second,
 		),
 	)
@@ -251,4 +251,22 @@ func run() error {
 	}
 	slog.Info("application.stop")
 	return nil
+}
+
+func defaultPDFRendererBinary() string {
+	if configured := os.Getenv("AUTOCV_PDF_RENDERER_BIN"); configured != "" {
+		return configured
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return htmlresume.DefaultRendererBinary
+	}
+	bundled := filepath.Join(
+		filepath.Dir(executable),
+		htmlresume.DefaultRendererBinary,
+	)
+	if _, err := os.Stat(bundled); err == nil {
+		return bundled
+	}
+	return htmlresume.DefaultRendererBinary
 }

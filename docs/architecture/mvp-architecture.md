@@ -35,7 +35,7 @@ AI 阶段的详细职责见 [`docs/architecture/ai-workflow.md`](./ai-workflow.m
 | 搜索 | SQLite FTS5 | 对来源片段和 Evidence 做本地检索 |
 | AI 接入 | Provider 接口 + OpenAI 首个适配器 | MVP 不把业务逻辑绑定到具体模型 |
 | AI SDK | OpenAI 官方 Go SDK | 使用结构化输出；版本在脚手架阶段锁定 |
-| PDF | Typst 模板 + 本地 Typst CLI | `kami` 作为视觉质量参考，不作为运行时依赖 |
+| PDF | Kami-style HTML 模板 + 本地 WeasyPrint/PDFium sidecar | HTML 是排版源文件，`kami` 不作为运行时依赖 |
 | 密钥 | 操作系统 Keychain | SQLite 只保存 Provider 配置，不保存明文密钥 |
 | 配置 | 本地配置文件 + SQLite | 非敏感全局配置使用文件，业务记录进入 SQLite |
 | 日志 | Go 结构化日志 | 默认脱敏，不记录完整简历/JD/Prompt |
@@ -66,8 +66,8 @@ flowchart LR
     App <--> DB["SQLite + FTS5"]
     App <--> Files["本地资料与导出目录"]
     App --> AI["AI Provider API"]
-    App --> Typst["本地 Typst Renderer"]
-    Typst --> PDF["PDF 产物"]
+    App --> Renderer["本地 HTML/PDF Renderer"]
+    Renderer --> PDF["PDF 产物"]
     PDF --> UI
 ```
 
@@ -75,7 +75,7 @@ flowchart LR
 
 - SQLite、资料文件和导出文件位于本机。
 - 只有任务需要的 JD、Evidence 和指令发送给 AI Provider。
-- Typst 在本机执行，不发送用户内容。
+- HTML/PDF renderer 在本机执行，不发送用户内容。
 - React 前端不能直接访问数据库、文件系统或密钥。
 
 ## 4. 分层与模块
@@ -99,12 +99,12 @@ ports/
        |
        v
 adapters/
-  SQLite / OpenAI / Markdown / DOCX / PDF / Typst / Keychain
+  SQLite / OpenAI / Markdown / DOCX / PDF / HTML Renderer / Keychain
 ```
 
 ### 4.1 `domain`
 
-包含不依赖 Wails、SQLite、OpenAI 和 Typst 的核心规则：
+包含不依赖 Wails、SQLite、OpenAI 和 HTML renderer 的核心规则：
 
 - Profile、Evidence、JD、Requirement、Match、Resume、ResumeRun。
 - 匹配分计算。
@@ -155,7 +155,7 @@ Clock
 - `markdown`: Markdown 导入。
 - `docx`: OOXML 文本和结构提取。
 - `pdftext`: 文本型 PDF 提取。
-- `typst`: Resume 到 Typst/PDF。
+- `htmlresume`: Resume HTML 模板、HTML 校验和 WeasyPrint/PDFium renderer 编排。
 - `keychain`: API Key 读写。
 - `filesystem`: 受管理资料、缓存和导出文件。
 
@@ -535,7 +535,7 @@ artifact.created
 - 导出诊断包时默认不包含用户原文。
 - AI 请求日志只记录 Provider、模型、任务、耗时、Token 用量和状态。
 - 删除 Profile 时事务性删除数据库记录，并清理受管理文件。
-- 外部命令只允许执行应用内配置的 Typst 二进制，不接受用户提供的任意命令。
+- 外部命令只允许执行应用内配置的 HTML/PDF renderer sidecar，不接受用户提供的任意命令。
 
 ## 14. 测试架构
 
@@ -546,14 +546,14 @@ artifact.created
 - 锁定块合并。
 - 状态转换。
 - 输入 Hash 和阶段失效。
-- Resume 到 Typst View Model。
+- Resume v2 到受约束 HTML composer 输入。
 
 ### 14.2 合约测试
 
 - AI Provider fixture 到 Schema。
 - Parser 输入到 Source Chunk。
 - Repository CRUD 和事务。
-- Typst 模板编译。
+- HTML 模板校验、CSS 不变性和 sidecar 渲染合同。
 
 ### 14.3 集成测试
 
@@ -605,7 +605,7 @@ autoCV/
 | ADR-002 | SQLite 持久化，FTS5 本地检索 | 已接受 |
 | ADR-003 | Go 显式工作流，不引入 Agent 框架 | 已接受 |
 | ADR-004 | Provider 任务接口，OpenAI 首个适配器 | 已接受 |
-| ADR-005 | Typst 作为 MVP PDF 渲染器 | 已接受 |
+| ADR-005 | Kami-style HTML + WeasyPrint/PDFium 作为 PDF 渲染器 | 已接受 |
 | ADR-006 | macOS 为首发平台 | 已接受 |
 | ADR-007 | 未确认量化值不得进入最终简历 | 已接受 |
 
@@ -615,4 +615,4 @@ autoCV/
 - DOCX/PDF 解析库。
 - Keychain 封装库。
 - OpenAI 具体模型。
-- Typst 字体组合。
+- HTML/PDF renderer 字体组合。

@@ -658,7 +658,7 @@ const providerSettings = {
       description: "原文件保留在本地。",
     },
     {
-      label: "Typst 与 PDF 产物",
+      label: "HTML/PDF 渲染产物",
       description: "排版和导出在本机执行。",
     },
   ],
@@ -1781,7 +1781,7 @@ describe("Paper Trail match review", () => {
       screen.getByRole("complementary", { name: "AI 数据发送边界" }),
     ).toBeInTheDocument();
     expect(screen.getByText("JD 原文")).toBeInTheDocument();
-    expect(screen.getByText("Typst 与 PDF 产物")).toBeInTheDocument();
+    expect(screen.getByText("HTML/PDF 渲染产物")).toBeInTheDocument();
     expect(screen.getByLabelText("OpenAI API Key")).toHaveValue("");
     expect(screen.queryByDisplayValue(/sk-/)).not.toBeInTheDocument();
   });

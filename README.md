@@ -201,15 +201,23 @@ validation. Real local resumes and JDs are never committed to the repository.
 ## Local Development
 
 Required Go and Node versions are pinned in `go.mod`, `.nvmrc`, and
-`frontend/package.json`. The PDF renderer is moving from Typst to a packaged
-HTML -> WeasyPrint -> PDFium sidecar, so local development should use the
-project renderer scripts instead of depending on a global Typst install.
+`frontend/package.json`. PDF rendering uses the project HTML -> WeasyPrint ->
+PDFium sidecar instead of a global Typst install.
 
 ```bash
 npm --prefix frontend install
 wails3 task verify
 wails3 task dev
 ```
+
+Build the local PDF renderer sidecar for macOS packaging with:
+
+```bash
+wails3 task darwin:renderer:build
+```
+
+For development, `AUTOCV_PDF_RENDERER_BIN` can point to a local
+`autocv-pdf-renderer` binary.
 
 Build the native application with:
 

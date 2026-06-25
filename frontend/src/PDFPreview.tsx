@@ -76,7 +76,7 @@ function PDFPreview({
         <IconAlertTriangle size={28} stroke={1.5} />
         <span>PDF 服务不可用</span>
         <h1>无法读取本地 PDF Artifact</h1>
-        <p>{error || "请检查 Typst 与本地数据目录后重试。"}</p>
+        <p>{error || "请检查本地 HTML/PDF 渲染器与数据目录后重试。"}</p>
         <button
           className="button button--primary"
           onClick={onRetry}
@@ -99,7 +99,7 @@ function PDFPreview({
         <h1>{blocked ? "先完成当前简历版本" : "生成第一份可预览 PDF"}</h1>
         <p>
           {workspace?.message ||
-            "Typst 将从当前结构化 Resume 生成单栏、可复制文本的 PDF。"}
+            "HTML 渲染器将从当前结构化 Resume 生成 Kami 风格、可复制文本的 PDF。"}
         </p>
         <div className="match-stage-actions">
           <button
