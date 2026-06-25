@@ -183,6 +183,40 @@ func (provider *Provider) DraftResume(
 	)
 }
 
+func (provider *Provider) ComposeResumeHTML(
+	ctx context.Context,
+	request ports.ComposeResumeHTMLRequest,
+) (ports.ComposedResumeHTML, error) {
+	input, err := json.Marshal(resumeHTMLRequestPayload(request))
+	if err != nil {
+		return ports.ComposedResumeHTML{}, fmt.Errorf(
+			"encode resume HTML compose input: %w",
+			err,
+		)
+	}
+	return executeStructured(
+		ctx,
+		provider,
+		TaskResumeHTMLCompose,
+		input,
+		func(contents []byte) (ports.ComposedResumeHTML, error) {
+			return decodeComposedResumeHTML(contents, request, input)
+		},
+	)
+}
+
+func (provider *Provider) CacheKey() string {
+	definition, err := Definition(TaskResumeHTMLCompose)
+	if err != nil {
+		return "openaiprovider/resume-html/unknown"
+	}
+	return fmt.Sprintf(
+		"openaiprovider/resume-html/%s/%s",
+		provider.model,
+		definition.PromptVersion,
+	)
+}
+
 func executeStructured[T any](
 	ctx context.Context,
 	provider *Provider,
@@ -488,6 +522,57 @@ func resumeRequestPayload(
 		Evidence:      evidencePayloads(request.Evidence),
 		Confirmations: confirmations,
 	}
+}
+
+func resumeHTMLRequestPayload(
+	request ports.ComposeResumeHTMLRequest,
+) struct {
+	Resume   domain.Resume            `json:"resume"`
+	Template ports.ResumeHTMLTemplate `json:"template"`
+} {
+	return struct {
+		Resume   domain.Resume            `json:"resume"`
+		Template ports.ResumeHTMLTemplate `json:"template"`
+	}{
+		Resume:   domain.NormalizeResume(request.Resume),
+		Template: request.Template,
+	}
+}
+
+func decodeComposedResumeHTML(
+	contents []byte,
+	request ports.ComposeResumeHTMLRequest,
+	input []byte,
+) (ports.ComposedResumeHTML, error) {
+	var payload struct {
+		HTML string `json:"html"`
+	}
+	if err := json.Unmarshal(contents, &payload); err != nil {
+		return ports.ComposedResumeHTML{}, fmt.Errorf(
+			"decode composed resume HTML: %w",
+			err,
+		)
+	}
+	payload.HTML = strings.TrimSpace(payload.HTML)
+	if payload.HTML == "" {
+		return ports.ComposedResumeHTML{}, errors.New(
+			"composed resume HTML is empty",
+		)
+	}
+	definition, err := Definition(TaskResumeHTMLCompose)
+	if err != nil {
+		return ports.ComposedResumeHTML{}, err
+	}
+	return ports.ComposedResumeHTML{
+		HTML:            payload.HTML,
+		TemplateID:      request.Template.ID,
+		TemplateVersion: request.Template.Version,
+		Composer:        "openai",
+		ComposerVersion: definition.PromptVersion,
+		PromptVersion:   definition.PromptVersion,
+		InputHash:       hashInput(input),
+		HTMLHash:        hashInput([]byte(payload.HTML)),
+	}, nil
 }
 
 func packagingStrategyPayloadFrom(

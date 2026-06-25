@@ -93,6 +93,21 @@ func (provider *DynamicProvider) DraftResume(
 	return resolved.DraftResume(ctx, request)
 }
 
+func (provider *DynamicProvider) ComposeResumeHTML(
+	ctx context.Context,
+	request ports.ComposeResumeHTMLRequest,
+) (ports.ComposedResumeHTML, error) {
+	resolved, err := provider.resolve(ctx)
+	if err != nil {
+		return ports.ComposedResumeHTML{}, err
+	}
+	return resolved.ComposeResumeHTML(ctx, request)
+}
+
+func (provider *DynamicProvider) CacheKey() string {
+	return "openaiprovider/dynamic/resume-html/v1"
+}
+
 func (provider *DynamicProvider) resolve(
 	ctx context.Context,
 ) (*Provider, error) {
@@ -132,8 +147,9 @@ func (provider *DynamicProvider) resolve(
 }
 
 var (
-	_ ports.ProfileExtractor = (*DynamicProvider)(nil)
-	_ ports.JDAnalyzer       = (*DynamicProvider)(nil)
-	_ ports.MatchSuggester   = (*DynamicProvider)(nil)
-	_ ports.ResumeDrafter    = (*DynamicProvider)(nil)
+	_ ports.ProfileExtractor   = (*DynamicProvider)(nil)
+	_ ports.JDAnalyzer         = (*DynamicProvider)(nil)
+	_ ports.MatchSuggester     = (*DynamicProvider)(nil)
+	_ ports.ResumeDrafter      = (*DynamicProvider)(nil)
+	_ ports.ResumeHTMLComposer = (*DynamicProvider)(nil)
 )

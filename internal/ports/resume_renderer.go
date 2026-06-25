@@ -17,8 +17,19 @@ type RenderMetadata struct {
 	RendererVersion         string
 	ExpectedRendererVersion string
 	TemplateVersion         string
+	HTMLTemplateID          string
+	HTMLHash                string
+	HTMLStyleHash           string
+	Composer                string
+	ComposerVersion         string
+	PromptVersion           string
 }
 
 type ResumeRenderer interface {
 	Render(context.Context, domain.Resume) (RenderedResume, error)
+}
+
+type VersionedResumeRenderer interface {
+	ResumeRenderer
+	CacheKey() string
 }

@@ -21,6 +21,7 @@ type Provider interface {
 	ports.JDAnalyzer
 	ports.MatchSuggester
 	ports.ResumeDrafter
+	ports.ResumeHTMLComposer
 }
 
 type Router struct {
@@ -113,6 +114,34 @@ func (router *Router) DraftResume(
 	return provider.DraftResume(requestContext, request)
 }
 
+func (router *Router) ComposeResumeHTML(
+	ctx context.Context,
+	request ports.ComposeResumeHTMLRequest,
+) (ports.ComposedResumeHTML, error) {
+	requestContext, done, err := router.begin(ctx, "resume_html_compose")
+	if err != nil {
+		return ports.ComposedResumeHTML{}, err
+	}
+	defer done()
+	provider, err := router.provider(requestContext)
+	if err != nil {
+		return ports.ComposedResumeHTML{}, err
+	}
+	return provider.ComposeResumeHTML(requestContext, request)
+}
+
+func (router *Router) CacheKey() string {
+	config, found, err := router.configs.GetActive(context.Background())
+	if err != nil || !found || config.Provider == domain.ProviderFake {
+		return "providerrouter/resume-html/fake"
+	}
+	return fmt.Sprintf(
+		"providerrouter/resume-html/%s/%s",
+		config.Provider,
+		config.Model,
+	)
+}
+
 func (router *Router) CancelActive() (string, bool) {
 	router.mutex.Lock()
 	defer router.mutex.Unlock()
@@ -177,5 +206,6 @@ var (
 	_ ports.JDAnalyzer                = (*Router)(nil)
 	_ ports.MatchSuggester            = (*Router)(nil)
 	_ ports.ResumeDrafter             = (*Router)(nil)
+	_ ports.ResumeHTMLComposer        = (*Router)(nil)
 	_ ports.ProviderRequestController = (*Router)(nil)
 )

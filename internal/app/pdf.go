@@ -190,7 +190,7 @@ func (service *PDFService) render(force bool) (PDFWorkspace, error) {
 	if err != nil {
 		return PDFWorkspace{}, err
 	}
-	inputHash := hashPDFRenderInput(resume)
+	inputHash := service.hashPDFRenderInput(resume)
 	if !force {
 		if workspace, reused, err := service.reuseSuccessfulPDFRenderStage(
 			ctx,
@@ -327,7 +327,7 @@ func (service *PDFService) render(force bool) (PDFWorkspace, error) {
 		run.ID,
 		inputHash,
 		workflow.StageStatusSucceeded,
-		pdfRenderStageResultJSON(artifact, resume, rendered.Metadata),
+		pdfRenderStageResultJSON(artifact, resume, rendered.Metadata, inputHash),
 		"",
 		artifact.CreatedAt,
 	)
@@ -427,20 +427,33 @@ func (service *PDFService) savePDFRenderStageResult(
 	)
 }
 
-func hashPDFRenderInput(resume domain.Resume) string {
+func (service *PDFService) hashPDFRenderInput(resume domain.Resume) string {
+	return hashPDFRenderInput(resume, rendererCacheKey(service.renderer))
+}
+
+func hashPDFRenderInput(resume domain.Resume, rendererCacheKey string) string {
 	digest := sha256.Sum256([]byte(fmt.Sprintf(
-		"%s\n%d\n%s",
+		"%s\n%d\n%s\n%s",
 		resume.ID,
 		resume.Version,
 		resume.InputHash,
+		rendererCacheKey,
 	)))
 	return hex.EncodeToString(digest[:])
+}
+
+func rendererCacheKey(renderer ports.ResumeRenderer) string {
+	if versioned, ok := renderer.(ports.VersionedResumeRenderer); ok {
+		return versioned.CacheKey()
+	}
+	return "renderer=legacy"
 }
 
 func pdfRenderStageResultJSON(
 	artifact domain.Artifact,
 	resume domain.Resume,
 	metadata ports.RenderMetadata,
+	inputHash string,
 ) string {
 	return stageResultJSON(struct {
 		ArtifactID              string `json:"artifact_id"`
@@ -452,16 +465,28 @@ func pdfRenderStageResultJSON(
 		RendererVersion         string `json:"renderer_version,omitempty"`
 		ExpectedRendererVersion string `json:"expected_renderer_version,omitempty"`
 		TemplateVersion         string `json:"template_version,omitempty"`
+		HTMLTemplateID          string `json:"html_template_id,omitempty"`
+		HTMLHash                string `json:"html_hash,omitempty"`
+		HTMLStyleHash           string `json:"html_style_hash,omitempty"`
+		Composer                string `json:"composer,omitempty"`
+		ComposerVersion         string `json:"composer_version,omitempty"`
+		PromptVersion           string `json:"prompt_version,omitempty"`
 	}{
 		ArtifactID:              artifact.ID,
 		ResumeID:                resume.ID,
-		InputHash:               hashPDFRenderInput(resume),
+		InputHash:               inputHash,
 		Version:                 resume.Version,
 		PageCount:               len(artifact.PreviewPaths),
 		Renderer:                metadata.Renderer,
 		RendererVersion:         metadata.RendererVersion,
 		ExpectedRendererVersion: metadata.ExpectedRendererVersion,
 		TemplateVersion:         metadata.TemplateVersion,
+		HTMLTemplateID:          metadata.HTMLTemplateID,
+		HTMLHash:                metadata.HTMLHash,
+		HTMLStyleHash:           metadata.HTMLStyleHash,
+		Composer:                metadata.Composer,
+		ComposerVersion:         metadata.ComposerVersion,
+		PromptVersion:           metadata.PromptVersion,
 	})
 }
 

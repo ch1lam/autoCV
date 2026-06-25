@@ -12,6 +12,7 @@ const (
 	TaskJDAnalysis        Task = "jd_analysis"
 	TaskMatchSuggestion   Task = "match_suggestion"
 	TaskResumeDraft       Task = "resume_draft"
+	TaskResumeHTMLCompose Task = "resume_html_compose"
 )
 
 type TaskDefinition struct {
@@ -44,6 +45,10 @@ var taskFiles = map[Task]struct {
 	TaskResumeDraft: {
 		prompt: "prompts/resume_draft_v1.txt",
 		schema: "schemas/resume_draft_v1.json",
+	},
+	TaskResumeHTMLCompose: {
+		prompt: "prompts/resume_html_compose_v1.txt",
+		schema: "schemas/resume_html_compose_v1.json",
 	},
 }
 
@@ -83,5 +88,6 @@ func Tasks() []Task {
 		TaskJDAnalysis,
 		TaskMatchSuggestion,
 		TaskResumeDraft,
+		TaskResumeHTMLCompose,
 	}
 }

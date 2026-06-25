@@ -13,6 +13,7 @@ import (
 	docxparser "github.com/ch1lam/autocv/internal/adapters/docx"
 	"github.com/ch1lam/autocv/internal/adapters/fakeprovider"
 	"github.com/ch1lam/autocv/internal/adapters/filesystem"
+	"github.com/ch1lam/autocv/internal/adapters/htmlresume"
 	"github.com/ch1lam/autocv/internal/adapters/keychain"
 	"github.com/ch1lam/autocv/internal/adapters/logging"
 	markdownparser "github.com/ch1lam/autocv/internal/adapters/markdown"
@@ -21,7 +22,6 @@ import (
 	"github.com/ch1lam/autocv/internal/adapters/providerrouter"
 	"github.com/ch1lam/autocv/internal/adapters/sqlite"
 	"github.com/ch1lam/autocv/internal/adapters/systemclock"
-	typstrenderer "github.com/ch1lam/autocv/internal/adapters/typst"
 	"github.com/ch1lam/autocv/internal/adapters/wailsdialog"
 	appservice "github.com/ch1lam/autocv/internal/app"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -198,14 +198,21 @@ func run() error {
 		systemclock.Clock{},
 		workflowEvents,
 	)
+	resumeRenderer, err := htmlresume.NewRenderer(
+		provider,
+		htmlresume.NewSidecar(
+			os.Getenv("AUTOCV_PDF_RENDERER_BIN"),
+			30*time.Second,
+		),
+	)
+	if err != nil {
+		return err
+	}
 	pdfService := appservice.NewPDFService(
 		resumeService,
 		sqlite.NewArtifactRepository(db),
 		managedFiles,
-		typstrenderer.NewRenderer(
-			os.Getenv("AUTOCV_TYPST_BIN"),
-			20*time.Second,
-		),
+		resumeRenderer,
 		exportPicker,
 		systemclock.Clock{},
 		workflowEvents,
