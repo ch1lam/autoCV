@@ -192,25 +192,7 @@ Markdown 职业资料
 - Markdown 可以重新打开。
 - 编辑后能够保存一个新 Resume 版本。
 
-### 6.6 Slice 5：PDF 渲染
-
-任务：
-
-- [x] 建立 Resume 到旧 PDF View Model。
-- [x] 创建单栏 ATS 友好模板。
-- [x] 配置中英文字体。
-- [x] 实现本地旧 PDF renderer 执行、超时和错误捕获。
-- [x] 保存 PDF Artifact。
-- [x] 在应用中预览，并导出 Markdown/PDF。
-
-验收：
-
-- 合成中文和英文简历均能生成 PDF。
-- PDF 文本可复制。
-- 预览和导出使用同一个 Artifact。
-- 渲染失败不覆盖上一次成功 PDF。
-
-### 6.6.1 Slice 5b：Kami-style HTML/PDF 迁移
+### 6.6 Slice 5：Kami-style HTML/PDF 渲染
 
 任务：
 
@@ -219,6 +201,8 @@ Markdown 职业资料
 - [x] 添加 HTML 模板 hash、CSS 不变性、安全标签、data-autocv-id 和字段一致性校验。
 - [x] 以 HTML hash、template 和 composer key 驱动 PDF 缓存。
 - [x] 使用 WeasyPrint 生成 PDF，使用 PDFium 生成 PNG preview。
+- [x] 保存 PDF Artifact。
+- [x] 在应用中预览，并导出 Markdown/PDF。
 - [ ] macOS 包内携带 renderer sidecar 和开源字体。
 
 验收：
@@ -227,6 +211,7 @@ Markdown 职业资料
 - 匹配、审阅、来源追溯、锁定和 Markdown 编辑流程继续可用。
 - 模型改写 CSS、插入脚本、遗漏 ID 或篡改字段文本会被拒绝。
 - 中英文 PDF 文本可复制，预览和导出使用同一份 artifact。
+- 渲染失败不覆盖上一次成功 PDF。
 
 ### 6.7 Slice 6：真实 OpenAI Provider
 

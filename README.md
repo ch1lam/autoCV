@@ -34,7 +34,10 @@ AutoCV aims to make that process repeatable:
 - No AutoCV cloud account is required.
 - The project is open source under the MIT license.
 
-These are product constraints. The current development baseline is captured in the [MVP product specification](./docs/product/autocv-mvp-product-spec.md), while broader sample-based validation remains documented in the [product definition plan](./docs/plans/autocv-product-definition-plan.md).
+These are product constraints. The current development baseline is captured in
+the [MVP product specification](./docs/product/autocv-mvp-product-spec.md),
+[MVP architecture](./docs/architecture/mvp-architecture.md), and
+[MVP implementation plan](./docs/plans/mvp-implementation-plan.md).
 
 ## MVP Workflow
 
@@ -151,7 +154,9 @@ Profile Intake
   -> PDF Rendering
 ```
 
-These names describe responsibilities, not a final commitment to seven independent agents or services. See the [AI workflow responsibilities](./docs/architecture/ai-workflow.md) for the current workflow notes.
+These names describe responsibilities, not a final commitment to seven
+independent agents or services. The Go workflow and Provider boundaries are
+defined in the [MVP architecture](./docs/architecture/mvp-architecture.md).
 
 ## Technical Direction
 
@@ -192,7 +197,6 @@ The current implementation documents are:
 - [AutoCV MVP Product Specification](./docs/product/autocv-mvp-product-spec.md)
 - [AutoCV MVP Architecture](./docs/architecture/mvp-architecture.md)
 - [AutoCV MVP Implementation Plan](./docs/plans/mvp-implementation-plan.md)
-- [Paper Trail Design QA](./design-qa.md)
 
 The official OpenAI Go SDK adapter is wired through the Provider configuration
 and macOS Keychain. The remaining M1 work is native desktop and real-sample
