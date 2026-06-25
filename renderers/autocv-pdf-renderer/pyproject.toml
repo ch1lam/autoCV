@@ -1,0 +1,18 @@
+[project]
+name = "autocv-pdf-renderer"
+version = "0.1.0"
+description = "AutoCV local HTML to PDF renderer sidecar"
+requires-python = ">=3.12"
+dependencies = [
+  "weasyprint==69.0",
+  "pypdfium2==5.10.1",
+  "pillow==12.2.0",
+]
+
+[project.scripts]
+autocv-pdf-renderer = "renderer:main"
+
+[dependency-groups]
+build = [
+  "pyinstaller==6.21.0",
+]
